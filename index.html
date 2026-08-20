@@ -567,7 +567,7 @@
         <button class="empresa-btn gblog" id="btn-gblog" onclick="setEmpresa('GBLOG')">GBLOG</button>
       </div>
       <span class="topbar-user">Olá, <strong id="topbar-nome">—</strong></span>
-      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v77</span>
+      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v78</span>
       <button class="btn-ghost" onclick="doLogout()">Sair</button>
     </div>
   </div>
@@ -2894,6 +2894,14 @@ async function saveEdit() {
   all[idx].entrada = document.getElementById('edit-entrada').value;
   all[idx].saida = document.getElementById('edit-saida').value;
   all[idx].obs = document.getElementById('edit-obs').value;
+  // Mesma regra de toggleStatus/toggleTodos: se o lançamento já tinha sido exportado
+  // antes e agora foi editado, a marca antiga de "exportado" fica desatualizada — sem
+  // isso, a correção nunca entraria num AFDT novo, porque o app ainda acha que aquele
+  // horário (já corrigido) foi o que já saiu no arquivo anterior.
+  if (all[idx].exportado_afdt) {
+    all[idx].exportado_afdt = false;
+    all[idx].exportado_em = null;
+  }
   await storageSet(STORAGE_KEY, all);
   closeModal();
   showToast('Registro atualizado.', 'success');
