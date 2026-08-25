@@ -567,7 +567,7 @@
         <button class="empresa-btn gblog" id="btn-gblog" onclick="setEmpresa('GBLOG')">GBLOG</button>
       </div>
       <span class="topbar-user">Olá, <strong id="topbar-nome">—</strong></span>
-      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v78</span>
+      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v79</span>
       <button class="btn-ghost" onclick="doLogout()">Sair</button>
     </div>
   </div>
@@ -2963,14 +2963,21 @@ async function extrairTextoPDF(file) {
 
 function extrairPendenciasDoTexto(paginas) {
   // Mesma lógica do processar_ponto.py, com 3 padrões de linha possíveis:
-  //  1) CODIGO NOME data dow data hora --- Batida Inexistente   (início de registro)
-  //  2) data dow data hora --- Batida Inexistente                (novo dia, mesmo funcionário)
-  //  3) data hora --- Batida Inexistente                         (continuação do mesmo dia)
+  //  1) CODIGO NOME data_ref dow data_prevista hora --- Batida Inexistente  (início de registro)
+  //  2) data_ref dow data_prevista hora --- Batida Inexistente               (novo dia, mesmo funcionário)
+  //  3) data_prevista hora --- Batida Inexistente                           (continuação do mesmo dia)
+  // "data_ref"/"horario" do item = data/hora PREVISTA da batida — mantido assim porque é
+  // o que monta a chave gravada no Firebase (mesma lógica do robô Python, não pode divergir).
+  // "data_referencia" = Data Referência real do PDF (o que aparece pra você na tela do Fortes) —
+  // usada só no filtro de período da importação. As duas podem ser dias diferentes quando o
+  // turno vira a meia-noite (ex: turno de 31/07 com falta prevista às 03:00 de 01/08) — sem
+  // isso, esses casos somem do filtro de período mesmo pertencendo ao mês certo.
   const itens = [];
   let codigoAtual = null, nomeAtual = null, empresa = 'GBEX';
+  let dataReferenciaAtual = null;
 
   const reEmpresa = /^Empresa:\s*(GBEX|GBLOG)/;
-  const reInicio     = /^(\d{6})\s+(.+?)\s+\d{2}\/\d{2}\/\d{4}\s+\S+\s+(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2})\s+---\s*Batida Inexistente/i;
+  const reInicio     = /^(\d{6})\s+(.+?)\s+(\d{2}\/\d{2}\/\d{4})\s+\S+\s+(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2})\s+---\s*Batida Inexistente/i;
   const reNovoDia    = /^(\d{2}\/\d{2}\/\d{4})\s+\S+\s+(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2})\s+---\s*Batida Inexistente/i;
   const reContinuaco = /^(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2})\s+---\s*Batida Inexistente/i;
 
@@ -2985,19 +2992,22 @@ function extrairPendenciasDoTexto(paginas) {
       if (mi) {
         codigoAtual = mi[1];
         nomeAtual = mi[2].trim();
-        itens.push({ codigo: codigoAtual, nome: nomeAtual, data_ref: mi[3], horario: mi[4], observacao: 'Batida Inexistente', empresa });
+        dataReferenciaAtual = mi[3];
+        itens.push({ codigo: codigoAtual, nome: nomeAtual, data_ref: mi[4], horario: mi[5], data_referencia: dataReferenciaAtual, observacao: 'Batida Inexistente', empresa });
         continue;
       }
 
       const mn = linha.match(reNovoDia);
       if (mn && codigoAtual) {
-        itens.push({ codigo: codigoAtual, nome: nomeAtual, data_ref: mn[2], horario: mn[3], observacao: 'Batida Inexistente', empresa });
+        dataReferenciaAtual = mn[1];
+        itens.push({ codigo: codigoAtual, nome: nomeAtual, data_ref: mn[2], horario: mn[3], data_referencia: dataReferenciaAtual, observacao: 'Batida Inexistente', empresa });
         continue;
       }
 
       const mc = linha.match(reContinuaco);
       if (mc && codigoAtual) {
-        itens.push({ codigo: codigoAtual, nome: nomeAtual, data_ref: mc[1], horario: mc[2], observacao: 'Batida Inexistente', empresa });
+        // Linha de continuação não repete a Data Referência no PDF — usa a última vista
+        itens.push({ codigo: codigoAtual, nome: nomeAtual, data_ref: mc[1], horario: mc[2], data_referencia: dataReferenciaAtual || mc[1], observacao: 'Batida Inexistente', empresa });
       }
     }
   }
@@ -3030,13 +3040,16 @@ async function importAnalisar() {
     }
 
     // Aplicar filtros de filial e período
+    // Período compara pela Data Referência real do PDF (a que aparece na tela do Fortes),
+    // não pela data/hora Prevista — turnos que viram a meia-noite têm Prevista no dia
+    // seguinte, e comparar por ela fazia o item sumir do filtro de período sem aviso.
     const normF = s => (s||'').toUpperCase().replace('FILIAL - ','').trim();
     let filtrados = todosItens.filter(item => {
       const func = buscarFunc(item.codigo, item.empresa);
       const filialItem = func ? func.filial : '';
       if (filtFilial && normF(filialItem) !== normF(filtFilial)) return false;
-      const p = item.data_ref.split('/');
-      const dataISO = p[2] + '-' + p[1] + '-' + p[0];
+      const pr = (item.data_referencia || item.data_ref).split('/');
+      const dataISO = pr[2] + '-' + pr[1] + '-' + pr[0];
       if (dataIni && dataISO < dataIni) return false;
       if (dataFim && dataISO > dataFim) return false;
       return true;
@@ -3096,11 +3109,16 @@ async function importAnalisar() {
     html += '<div style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;background:var(--surface2);font-size:12px;">';
     filtrados.forEach(item => {
       const filialNome = item.filial ? item.filial.replace('FILIAL - ','') : '(sem filial)';
+      // Mostra a Data Referência (a que aparece na tela do Fortes); se a batida prevista
+      // caiu num dia diferente (turno virando meia-noite), indica isso ao lado do horário.
+      const dataExibida = item.data_referencia || item.data_ref;
+      const viradaDia = item.data_referencia && item.data_referencia !== item.data_ref;
       html += '<div style="padding:3px 0;border-bottom:1px solid var(--border);">';
-      html += '<span style="color:var(--text-muted)">' + item.data_ref + '</span> — ';
+      html += '<span style="color:var(--text-muted)">' + dataExibida + '</span> — ';
       html += '<strong>' + item.nome + '</strong> ';
       html += '<span style="color:var(--text-muted)">(' + filialNome + ' · ' + item.empresa + ')</span> ';
       html += '<span style="color:var(--yellow)">' + item.horario + '</span>';
+      if (viradaDia) html += ' <span style="color:var(--text-muted);font-size:11px">(previsto ' + item.data_ref + ')</span>';
       html += '</div>';
     });
     html += '</div>';
@@ -3136,11 +3154,14 @@ async function importGravar() {
       const p = item.data_ref.split('/');
       const dataISO = p[2] + '-' + p[1] + '-' + p[0];
       const fbKey = item.codigo + '_' + dataISO + '_' + item.horario.replace(':','-');
+      // data_referencia é só uso interno da tela de importação (filtro de período) — não
+      // grava no Firebase, pra manter o formato idêntico ao que o robô Python já escreve.
+      const { data_referencia, ...itemParaSalvar } = item;
       try {
         const r = await fetch(FB_URL + '/pendencias_abertas/' + fbKey + '.json', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(item)
+          body: JSON.stringify(itemParaSalvar)
         });
         if (r.ok) novas++;
         else erros++;
