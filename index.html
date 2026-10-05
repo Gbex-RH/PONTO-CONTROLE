@@ -573,7 +573,8 @@
         <button class="empresa-btn gblog" id="btn-gblog" onclick="setEmpresa('GBLOG')">GBLOG</button>
       </div>
       <span class="topbar-user">Olá, <strong id="topbar-nome">—</strong></span>
-      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v83</span>
+      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v84</span>
+      <button class="btn-ghost" onclick="trocarMinhaSenha()" title="Trocar minha senha">🔑</button>
       <button class="btn-ghost" onclick="doLogout()">Sair</button>
     </div>
   </div>
@@ -586,6 +587,7 @@
     <button class="tab-btn" id="tab-btn-lancamento" onclick="switchTab('lancamento')"><span class="tab-icon">✏️</span><span class="tab-label">Lançamento</span><span class="tab-tooltip">Lançamento</span></button>
     <button class="tab-btn" id="tab-btn-meus" onclick="switchTab('meus')"><span class="tab-icon">📋</span><span class="tab-label">Meus Lançamentos</span><span class="tab-tooltip">Meus Lançamentos</span></button>
     <button class="tab-btn hidden" id="tab-btn-jornadas" onclick="switchTab('jornadas')"><span class="tab-icon">🗓️</span><span class="tab-label">Jornadas</span><span class="tab-tooltip">Jornadas</span></button>
+    <button class="tab-btn hidden" id="tab-btn-cadastros" onclick="switchTab('cadastros')"><span class="tab-icon">👥</span><span class="tab-label">Cadastros</span><span class="tab-tooltip">Cadastros</span></button>
     <button class="tab-btn hidden" id="tab-btn-validacao" onclick="switchTab('validacao')"><span class="tab-icon">✅</span><span class="tab-label">Validação &amp; AFDT</span><span class="tab-tooltip">Validação &amp; AFDT</span></button>
     <button class="tab-btn hidden" id="tab-btn-auditoria" onclick="switchTab('auditoria')"><span class="tab-icon">🔍</span><span class="tab-label">Auditoria</span><span class="tab-tooltip">Auditoria</span></button>
     <button class="tab-btn hidden" id="tab-btn-relogio" onclick="switchTab('relogio')"><span class="tab-icon">🕐</span><span class="tab-label">Bater Ponto</span><span class="tab-tooltip">Bater Ponto</span></button>
@@ -1094,6 +1096,52 @@
     </div>
   </div>
 
+  <!-- ─── TAB: CADASTROS (somente admin) ─── -->
+  <div class="tab-content" id="tab-cadastros">
+    <div class="main">
+      <div class="card" id="cad-migrar-card" style="display:none;margin-bottom:20px;border:1px solid var(--yellow)">
+        <div class="card-title"><span class="dot"></span> Migração inicial dos logins</div>
+        <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Os logins ainda estão só dentro do código do site. Clique para copiá-los para o banco (feito uma única vez). Nada muda para os usuários.</div>
+        <button class="btn-afdt" onclick="cadMigrar()">Migrar cadastros</button>
+      </div>
+      <div class="card" id="cad-form-card" style="display:none;margin-bottom:20px;border:1px solid var(--accent)">
+        <div class="card-title"><span class="dot"></span> <span id="cad-form-titulo">Novo login</span></div>
+        <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end">
+          <div><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">CPF (login)</label><input id="cad-cpf" maxlength="14" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none;width:150px"></div>
+          <div style="flex:1;min-width:240px"><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Nome completo</label><input id="cad-nome" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none;width:100%"></div>
+          <div><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Nome curto</label><input id="cad-nomec" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none;width:150px"></div>
+          <div><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Perfil</label><select id="cad-perfil" onchange="cadPerfilChange()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none">
+            <option value="gestor">Gestor</option><option value="admin">Admin (acesso total)</option><option value="empregado">Home office (só bate ponto)</option></select></div>
+          <div id="cad-senha-box"><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Senha inicial</label><input id="cad-senha" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none;width:150px" placeholder="mín. 6 caracteres"></div>
+        </div>
+        <div id="cad-gestor-box" style="margin-top:14px">
+          <label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Filiais que pode ver</label><div id="cad-filiais" style="display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px"></div>
+          <label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px;margin-top:12px">Setores (nenhum marcado = todos os setores das filiais)</label><div id="cad-setores" style="display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px"></div>
+          <details style="margin-top:12px"><summary style="cursor:pointer;font-size:12px;color:var(--text-muted)">Avançado: exceções por funcionário</summary>
+            <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:8px">
+              <div style="flex:1;min-width:240px"><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Bloqueados (códigos, separados por vírgula)</label><input id="cad-bloqueados" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none;width:100%"></div>
+              <div style="flex:1;min-width:240px"><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Somente estes (códigos — ignora filial/setor)</label><input id="cad-permitidos" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none;width:100%"></div>
+            </div></details>
+        </div>
+        <div id="cad-emp-box" style="display:none;margin-top:14px;gap:14px;flex-wrap:wrap">
+          <div><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Código do funcionário</label><input id="cad-codigo" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none;width:160px" placeholder="ex.: 001112 ou GBLOG_000001"></div>
+          <div style="font-size:12px;color:var(--text-muted);align-self:center">Para o home office funcionar por completo, o funcionário também precisa estar na lista de home office (próxima entrega).</div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:16px;align-items:center">
+          <button class="btn-afdt" id="cad-salvar" onclick="cadSalvar()">Salvar</button>
+          <button class="btn-ghost" onclick="cadFecharForm()">Cancelar</button>
+          <label style="margin-left:auto;font-size:13px;display:flex;gap:6px;align-items:center"><input type="checkbox" id="cad-ativo" checked> Ativo</label>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title" style="display:flex;align-items:center"><span class="dot"></span>&nbsp;Logins
+          <button class="btn-afdt" style="margin-left:auto" onclick="cadAbrirForm(null)">+ Novo login</button></div>
+        <input type="text" id="cad-busca" placeholder="Buscar nome ou CPF..." oninput="debounceRender(cadRender)" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none;width:220px;margin-bottom:12px">
+        <div class="val-table-wrap" id="cad-lista"><span style="font-size:13px;color:var(--text-dim)">Carregando...</span></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ─── TAB: JORNADAS (consulta — gestores e admin) ─── -->
   <div class="tab-content" id="tab-jornadas">
     <div class="main">
@@ -1396,15 +1444,49 @@ async function storageAppend(registro) {
 // ─────────────────────────────────────────────
 function normalizaCPF(v) { return v.replace(/\D/g,''); }
 
-function doLogin() {
+// ── Login (v84) ──
+// A senha é conferida pelo Firebase Authentication. O cadastro (perfil, filiais...) vem de
+// /usuarios/{cpf} no banco; enquanto a migração não foi feita, usa a lista embutida (_D)
+// só como fonte do cadastro — a senha embutida não é mais usada para liberar o acesso.
+function usuarioDoBanco(r) {
+  if (!r) return null;
+  const u = { ...r };
+  u.filiais = r.admin ? null : (r.filiais || []);
+  u.setores = r.setores || [];
+  if (!r.bloqueados) delete u.bloqueados;
+  if (!r.permitidos || !r.permitidos.length) delete u.permitidos;
+  if (r.perfil !== 'empregado') delete u.perfil;
+  return u;
+}
+async function carregarCadastroUsuario(cpf) {
+  try {
+    const res = await fetch(FB_URL + '/usuarios/' + cpf + '.json');
+    if (res.ok) { const r = await res.json(); if (r) return usuarioDoBanco(r); }
+  } catch (e) { console.warn('Erro ao ler cadastro:', e); }
+  const u = USUARIOS[cpf];
+  if (!u) return null;
+  const { senha, ...semSenha } = u;
+  return semSenha;
+}
+async function entrarComo(cpf, pass) {
+  const auth = await fbAuthEntrar(cpf, pass);
+  if (!auth) return { erro: 'Usuário ou senha incorretos.' };
+  const u = await carregarCadastroUsuario(cpf);
+  if (!u) { fbAuthSair(); return { erro: 'Login sem cadastro no app. Fale com o Setor Pessoal.' }; }
+  if (u.ativo === false) { fbAuthSair(); return { erro: 'Acesso desativado. Fale com o Setor Pessoal.' }; }
+  return { u };
+}
+async function doLogin() {
   const cpf = normalizaCPF(document.getElementById('login-cpf').value);
   const pass = document.getElementById('login-pass').value;
-  const u = USUARIOS[cpf];
-  if (!u || u.senha !== pass) {
-    document.getElementById('login-erro').style.display = 'block'; return;
-  }
-  currentUser = { cpf, ...u };
-  fbAuthEntrar(cpf, pass);
+  const erroEl = document.getElementById('login-erro');
+  const btn = document.querySelector('.btn-login');
+  erroEl.style.display = 'none';
+  btn.disabled = true; const txt = btn.textContent; btn.textContent = 'Entrando...';
+  const r = await entrarComo(cpf, pass);
+  btn.disabled = false; btn.textContent = txt;
+  if (r.erro) { erroEl.textContent = r.erro; erroEl.style.display = 'block'; return; }
+  currentUser = { cpf, ...r.u };
   const lembrar = document.getElementById('login-remember').checked;
   if (lembrar) { localStorage.setItem('gbex_ponto_session', JSON.stringify({cpf, pass})); }
   else { localStorage.removeItem('gbex_ponto_session'); }
@@ -1427,9 +1509,10 @@ function tryAutoLogin() {
   if (!s) return;
   try {
     const {cpf, pass} = JSON.parse(s);
-    const u = USUARIOS[cpf];
-    if (u && u.senha === pass) { currentUser = {cpf,...u}; fbAuthEntrar(cpf, pass); iniciarApp(); }
-    else { localStorage.removeItem('gbex_ponto_session'); }
+    entrarComo(cpf, pass).then(r => {
+      if (r.erro) { localStorage.removeItem('gbex_ponto_session'); return; }
+      currentUser = { cpf, ...r.u }; iniciarApp();
+    });
   } catch { localStorage.removeItem('gbex_ponto_session'); }
 }
 
@@ -1473,7 +1556,7 @@ function iniciarApp() {
   //   - relogio/batidas: somente perfil empregado (sempre ocultas aqui)
   const visibilidade = {
     pendencias: true, lancamento: true, meus: true, jornadas: true,
-    validacao: isAdmin, auditoria: isAdmin,
+    validacao: isAdmin, auditoria: isAdmin, cadastros: isAdmin,
     relogio: false, batidas: false
   };
   document.querySelectorAll('.tabs-nav .tab-btn').forEach(b => {
@@ -1633,6 +1716,7 @@ function switchTab(tab) {
   if (tab === 'relogio') hoInitRelogio();
   if (tab === 'batidas') hoRenderBatidasMes();
   if (tab === 'jornadas') initJornadas();
+  if (tab === 'cadastros') cadCarregar();
 }
 
 // ─────────────────────────────────────────────
@@ -3973,6 +4057,185 @@ function renderJornadas() {
         <td>${lista.length ? `<button class="btn-ghost" style="font-size:12px;white-space:nowrap" onclick="jorAbrirForm('${esc(f.codigo)}')">Solicitar mudança</button>` : ''}</td></tr>`;
     }).join('') + '</tbody></table>'
     : '<span style="font-size:13px;color:var(--text-dim)">Nenhum funcionário seu nesta filial nesta empresa.</span>';
+}
+
+// ─────────────────────────────────────────────
+//  CADASTROS — LOGINS (v84a, somente admin)
+//  /usuarios/{cpf}: { nome, nomeC, admin, filiais, setores, perfil, codigo, empresa,
+//                    bloqueados, permitidos, ativo, uid }   (sem senha — senha é do Firebase Auth)
+//  /admins/{uid}: true   ← usado pelas regras do banco para liberar escrita de cadastros
+// ─────────────────────────────────────────────
+const CAD_UID_INICIAL = {"00723054363": "whnTGDKh3GadTdWfBEAODFuTlMK2", "65769759372": "Nfjjr3lHblXPdgy5JyjpPLrSKdJ3", "65837614320": "z0t071WZlWWblRESYF8kWcui6yi1", "08496320308": "4JSU79NlHZdOHlhHDdv5r6gLUL03", "06166460384": "z22pdwlogqWp33tYrdiarpuY8A92", "06095936330": "ZaoaABRAdcPyRIJw3HkbFsB0ToT2", "00156829355": "3WhzaJ9fmSZrs8wbQkvI18xDUir2", "06965408359": "5uDYsbR9FXhvyCUOorEpA4wdH6s2", "05972530481": "sZ0dKoatJSMgKFhJA5xSsqsuzVN2", "85113522368": "9rJRHLD6XiZ5CmbMM9op6MLSE632", "95041923353": "omhkx1ffDbPa8tfh5PZvyN9V6Ax2", "98996649368": "DNYqPNeocRcxQH0EXhNuZ3bOjbO2", "04708060440": "awdkY79BXlPRi6UgUxLlrlbcDSG2", "08996177431": "S3vwoLrjubWL2l7yA1ZDM8wufO43", "02230548441": "Okn6ITLlWnWQy5wezn5aJVZ6Yof2", "74939165353": "J1xuson90GYE5efVoopOTKm3X2m1", "56513178304": "nN6DrxX54xY4MZsttame6DLcxAZ2", "05980791493": "ikBWoDUTAYcr1cpJdsnXeenG4Tl2", "03528076445": "4qhKXV9pWPhWaJ80OG9kx9LoqCk1", "73175188320": "CMx7WOabibQ58rrravjU6doxdFi1", "00858282380": "UxeftCdmI8ThQjseEKSoGNrDk3t1", "02148965441": "NYz5kfPbVMdSd2ZhbUooc8AVNio2", "02407524497": "pmveOSysthMwdxjFXKLkaGY052t1", "46198512304": "Kbrjg2AUtuO4wUUPNtXUn05QBRs2", "98892584391": "12JCYMbOdIRiUwP4ePQoQEnvG3V2", "00745746390": "hIykZ7J8x2QhdmNBVWYtR6S1oiA2", "12160689416": "LCg843ZZgZgkxfNnD8np1qpXdbO2", "10517264412": "XYG4IV28xlNtk4JOq4Ie1zxkWMz2", "71272528405": "d3E0m8Q7aPdvIjhEUQedGD3hedN2", "82930317353": "kFK5DoZRrShDdqSUex3rMocNhO73", "01233973320": "xs3rK1uu8Xe8VyztiFa5N8Jkjs12", "82411220391": "rhRMOEohRkdg3xNMWIXCKuIeW9n1", "16763258402": "y1edy48wa6UkN3FTxDQV7ECAGZW2"};  // CPF → UID das contas criadas em 05/10/2026
+let cadUsuarios = {};
+let cadEditando = null;
+const cadEsc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function cadEhAdmin() { return currentUser && currentUser.filiais === null; }
+async function cadCarregar() {
+  if (!cadEhAdmin()) return;
+  const el = document.getElementById('cad-lista');
+  try {
+    const res = await fetch(FB_URL + '/usuarios.json');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    cadUsuarios = (await res.json()) || {};
+  } catch (e) { el.innerHTML = '<span style="color:var(--red)">Erro ao carregar logins: ' + cadEsc(e.message) + '</span>'; return; }
+  document.getElementById('cad-migrar-card').style.display = Object.keys(cadUsuarios).length ? 'none' : 'block';
+  cadRender();
+}
+function cadRender() {
+  const el = document.getElementById('cad-lista');
+  const busca = (document.getElementById('cad-busca').value || '').toUpperCase().trim();
+  const lista = Object.entries(cadUsuarios)
+    .filter(([cpf, u]) => !busca || cpf.includes(busca) || (u.nome || '').toUpperCase().includes(busca))
+    .sort((a, b) => (a[1].nome || '').localeCompare(b[1].nome || ''));
+  if (!lista.length) { el.innerHTML = '<span style="font-size:13px;color:var(--text-dim)">' + (Object.keys(cadUsuarios).length ? 'Nenhum login encontrado.' : 'Nenhum login no banco ainda — faça a migração acima.') + '</span>'; return; }
+  const perfil = u => u.admin ? '<b style="color:var(--accent)">Admin</b>' : u.perfil === 'empregado' ? 'Home office' : 'Gestor';
+  const acesso = u => u.admin ? 'Todas as filiais' : u.perfil === 'empregado' ? (u.codigo || '—')
+    : ((u.filiais || []).map(f => f.replace('FILIAL - ', '')).join(', ') || '—') + ((u.setores || []).length ? '<br><span style="font-size:11px;color:var(--text-dim)">' + u.setores.join(', ') + '</span>' : '');
+  el.innerHTML = '<table class="val-table"><thead><tr><th>Nome</th><th>CPF</th><th>Perfil</th><th>Acesso</th><th>Situação</th><th></th></tr></thead><tbody>' +
+    lista.map(([cpf, u]) => '<tr style="' + (u.ativo === false ? 'opacity:.5' : '') + '"><td>' + cadEsc(u.nome) + '</td><td style="font-family:monospace">' + cpf + '</td><td>' + perfil(u) + '</td><td style="font-size:12px">' + acesso(u) + '</td>' +
+      '<td>' + (u.ativo === false ? '<span style="color:var(--red)">Desativado</span>' : '<span style="color:var(--green)">Ativo</span>') + '</td>' +
+      '<td><button class="btn-ghost" style="font-size:12px" onclick="cadAbrirForm(\'' + cpf + '\')">Editar</button></td></tr>').join('') + '</tbody></table>';
+}
+function cadOpcoes() {
+  const filiais = [...new Set(FUNCIONARIOS.map(f => f.filial).filter(Boolean))].sort();
+  const setores = [...new Set(FUNCIONARIOS.map(f => f.setor).filter(Boolean))].sort();
+  return { filiais, setores };
+}
+function cadAbrirForm(cpf) {
+  cadEditando = cpf;
+  const u = cpf ? cadUsuarios[cpf] : { ativo: true, filiais: [], setores: [] };
+  const { filiais, setores } = cadOpcoes();
+  document.getElementById('cad-form-titulo').textContent = cpf ? 'Editar login — ' + (u.nome || cpf) : 'Novo login';
+  const cpfEl = document.getElementById('cad-cpf'); cpfEl.value = cpf || ''; cpfEl.disabled = !!cpf;
+  document.getElementById('cad-nome').value = u.nome || '';
+  document.getElementById('cad-nomec').value = u.nomeC || '';
+  document.getElementById('cad-perfil').value = u.admin ? 'admin' : (u.perfil === 'empregado' ? 'empregado' : 'gestor');
+  document.getElementById('cad-senha-box').style.display = cpf ? 'none' : '';
+  document.getElementById('cad-senha').value = '';
+  const ck = (id, opts, marcados) => document.getElementById(id).innerHTML = opts.map(o =>
+    '<label style="display:flex;gap:5px;align-items:center"><input type="checkbox" value="' + cadEsc(o) + '"' + ((marcados || []).includes(o) ? ' checked' : '') + '>' + cadEsc(o.replace('FILIAL - ', '')) + '</label>').join('');
+  ck('cad-filiais', filiais, u.filiais); ck('cad-setores', setores, u.setores);
+  document.getElementById('cad-bloqueados').value = (u.bloqueados || []).join(', ');
+  document.getElementById('cad-permitidos').value = (u.permitidos || []).join(', ');
+  document.getElementById('cad-codigo').value = u.codigo || '';
+  document.getElementById('cad-ativo').checked = u.ativo !== false;
+  cadPerfilChange();
+  const card = document.getElementById('cad-form-card'); card.style.display = 'block';
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function cadFecharForm() { cadEditando = null; document.getElementById('cad-form-card').style.display = 'none'; }
+function cadPerfilChange() {
+  const p = document.getElementById('cad-perfil').value;
+  document.getElementById('cad-gestor-box').style.display = p === 'gestor' ? '' : 'none';
+  document.getElementById('cad-emp-box').style.display = p === 'empregado' ? 'flex' : 'none';
+}
+async function cadPut(caminho, valor) {
+  const res = await fetch(FB_URL + '/' + caminho + '.json', { method: valor === null ? 'DELETE' : 'PUT',
+    headers: { 'Content-Type': 'application/json' }, body: valor === null ? undefined : JSON.stringify(valor) });
+  if (!res.ok) throw new Error('HTTP ' + res.status + ' em ' + caminho);
+}
+async function cadSalvar() {
+  if (!cadEhAdmin()) return;
+  const cpf = cadEditando || normalizaCPF(document.getElementById('cad-cpf').value);
+  if (!/^\d{11}$/.test(cpf)) { showToast('CPF inválido (11 dígitos).', 'error'); return; }
+  if (!cadEditando && cadUsuarios[cpf]) { showToast('Já existe login para este CPF.', 'error'); return; }
+  const nome = document.getElementById('cad-nome').value.trim().toUpperCase();
+  if (!nome) { showToast('Informe o nome.', 'error'); return; }
+  const perfil = document.getElementById('cad-perfil').value;
+  const marcados = id => [...document.querySelectorAll('#' + id + ' input:checked')].map(i => i.value);
+  const lista = id => document.getElementById(id).value.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
+  const ant = cadEditando ? cadUsuarios[cpf] : {};
+  const u = {
+    nome, nomeC: document.getElementById('cad-nomec').value.trim().toUpperCase() || nome.split(' ').slice(0, 2).join(' '),
+    admin: perfil === 'admin', ativo: document.getElementById('cad-ativo').checked,
+    atualizado_por: currentUser.nome, atualizado_em: new Date().toISOString()
+  };
+  if (ant.uid) u.uid = ant.uid;
+  if (perfil === 'gestor') {
+    u.filiais = marcados('cad-filiais'); u.setores = marcados('cad-setores');
+    if (!u.filiais.length && !lista('cad-permitidos').length) { showToast('Marque ao menos uma filial.', 'error'); return; }
+    const bl = lista('cad-bloqueados'), pe = lista('cad-permitidos');
+    if (bl.length) u.bloqueados = bl;
+    if (pe.length) u.permitidos = pe;
+  }
+  if (perfil === 'empregado') {
+    u.perfil = 'empregado';
+    u.codigo = document.getElementById('cad-codigo').value.trim().toUpperCase();
+    if (!u.codigo) { showToast('Informe o código do funcionário.', 'error'); return; }
+    u.empresa = u.codigo.startsWith('GBLOG_') ? 'GBLOG' : 'GBEX';
+    const f = FUNCIONARIOS.find(x => x.codigo === u.codigo); if (f) u.filiais = [f.filial];
+  }
+  const btn = document.getElementById('cad-salvar'); btn.disabled = true;
+  try {
+    if (!cadEditando) {
+      // Conta nova no Firebase Authentication (não troca a sessão do admin: o token retornado é descartado)
+      const senha = document.getElementById('cad-senha').value || cpf;
+      if (senha.length < 6) throw new Error('A senha precisa ter ao menos 6 caracteres.');
+      const r = await _fetchOriginal('https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=' + FB_API_KEY, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cpf + FB_EMAIL_DOM, password: senha, returnSecureToken: false })
+      });
+      const j = await r.json();
+      if (!j.localId) throw new Error(j.error && j.error.message === 'EMAIL_EXISTS' ? 'Já existe conta no Firebase para este CPF.' : 'Erro ao criar a conta: ' + ((j.error && j.error.message) || '?'));
+      u.uid = j.localId;
+    }
+    await cadPut('usuarios/' + cpf, u);
+    if (u.uid) await cadPut('admins/' + u.uid, u.admin && u.ativo ? true : null);
+    cadUsuarios[cpf] = u;
+    showToast('✅ Login salvo.' + (!cadEditando ? ' Senha inicial: a informada (ou o CPF, se vazio).' : ''), 'success');
+    cadFecharForm(); cadRender();
+  } catch (e) {
+    showToast('Erro ao salvar: ' + e.message, 'error');
+  } finally { btn.disabled = false; }
+}
+// Copia os logins embutidos (_D) para /usuarios e /admins — uma única vez
+async function cadMigrar() {
+  if (!cadEhAdmin()) return;
+  if (!confirm('Copiar os ' + Object.keys(USUARIOS).length + ' logins atuais para o banco?')) return;
+  let ok = 0; const erros = [];
+  for (const [cpf, x] of Object.entries(USUARIOS)) {
+    const u = { nome: x.nome, nomeC: x.nomeC || '', admin: x.filiais === null, ativo: true,
+      uid: CAD_UID_INICIAL[cpf] || '', migrado_em: new Date().toISOString() };
+    if (x.filiais) u.filiais = x.filiais;
+    if (x.setores && x.setores.length) u.setores = x.setores;
+    if (x.bloqueados && x.bloqueados.length) u.bloqueados = x.bloqueados;
+    if (x.permitidos) u.permitidos = x.permitidos;
+    if (x.perfil) u.perfil = x.perfil;
+    if (x.codigo) u.codigo = x.codigo;
+    if (x.empresa) u.empresa = x.empresa;
+    try {
+      await cadPut('usuarios/' + cpf, u);
+      if (u.admin && u.uid) await cadPut('admins/' + u.uid, true);
+      ok++;
+    } catch (e) { erros.push(x.nome + ': ' + e.message); }
+  }
+  showToast('Migração: ' + ok + ' login(s) copiados' + (erros.length ? ' — ' + erros.length + ' erro(s), veja o console.' : '.'), erros.length ? 'error' : 'success');
+  if (erros.length) console.warn(erros);
+  cadCarregar();
+}
+// Qualquer usuário troca a própria senha (o admin não consegue trocar a de outra pessoa pelo navegador)
+async function trocarMinhaSenha() {
+  const nova = prompt('Nova senha (mínimo 6 caracteres):');
+  if (nova === null) return;
+  if (nova.length < 6) { showToast('A senha precisa ter ao menos 6 caracteres.', 'error'); return; }
+  if (prompt('Digite a nova senha de novo:') !== nova) { showToast('As senhas não conferem.', 'error'); return; }
+  try {
+    const t = await fbToken();
+    if (!t) throw new Error('sessão do Firebase não encontrada — saia e entre de novo');
+    const r = await _fetchOriginal('https://identitytoolkit.googleapis.com/v1/accounts:update?key=' + FB_API_KEY, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken: t, password: nova, returnSecureToken: true })
+    });
+    const j = await r.json();
+    if (!j.idToken) throw new Error((j.error && j.error.message) || 'erro');
+    fbAuth = { idToken: j.idToken, refreshToken: j.refreshToken, expira: Date.now() + (Number(j.expiresIn) - 300) * 1000 };
+    const s = localStorage.getItem('gbex_ponto_session');
+    if (s) localStorage.setItem('gbex_ponto_session', JSON.stringify({ cpf: currentUser.cpf, pass: nova }));
+    showToast('✅ Senha alterada. Use a nova senha no próximo login.', 'success');
+  } catch (e) {
+    const m = String(e.message).includes('CREDENTIAL_TOO_OLD') ? 'por segurança, saia e entre de novo antes de trocar a senha' : e.message;
+    showToast('Não foi possível trocar a senha: ' + m, 'error');
+  }
 }
 
 // ─────────────────────────────────────────────
