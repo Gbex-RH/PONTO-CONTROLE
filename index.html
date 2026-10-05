@@ -573,7 +573,7 @@
         <button class="empresa-btn gblog" id="btn-gblog" onclick="setEmpresa('GBLOG')">GBLOG</button>
       </div>
       <span class="topbar-user">Olá, <strong id="topbar-nome">—</strong></span>
-      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v82</span>
+      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v83</span>
       <button class="btn-ghost" onclick="doLogout()">Sair</button>
     </div>
   </div>
@@ -1263,6 +1263,56 @@ let acResults = [];
 
 // ─── Firebase Realtime Database ───
 const FB_URL = 'https://gbex-ponto-default-rtdb.firebaseio.com';
+
+// ─── Login no Firebase Authentication (v83) ───
+// Cada usuário do app tem uma conta no Firebase (e-mail técnico CPF@gbex-ponto.firebaseapp.com,
+// mesma senha do app). Depois do login, toda chamada ao FB_URL leva ?auth=<token>, o que
+// permite fechar o banco com regras de segurança. Se o login no Firebase falhar, o app
+// segue sem token (funciona enquanto o banco estiver aberto) e avisa no console.
+const FB_API_KEY = 'AIzaSyAkNigeb2ebbDVZT4xsc6VFgHor2yDD2to';
+const FB_EMAIL_DOM = '@gbex-ponto.firebaseapp.com';
+let fbAuth = null;          // { idToken, refreshToken, expira }
+let fbAuthPronto = Promise.resolve(null);
+async function fbAuthEntrar(cpf, senha) {
+  fbAuthPronto = (async () => {
+    try {
+      const r = await fetch('https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=' + FB_API_KEY, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cpf + FB_EMAIL_DOM, password: senha, returnSecureToken: true })
+      });
+      const j = await r.json();
+      if (!j.idToken) throw new Error((j.error && j.error.message) || 'sem token');
+      fbAuth = { idToken: j.idToken, refreshToken: j.refreshToken, expira: Date.now() + (Number(j.expiresIn) - 300) * 1000 };
+      return fbAuth;
+    } catch (e) { console.warn('Login Firebase falhou:', e.message); fbAuth = null; return null; }
+  })();
+  return fbAuthPronto;
+}
+async function fbToken() {
+  await fbAuthPronto;
+  if (!fbAuth) return null;
+  if (Date.now() > fbAuth.expira) {
+    try {
+      const r = await fetch('https://securetoken.googleapis.com/v1/token?key=' + FB_API_KEY, {
+        method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'grant_type=refresh_token&refresh_token=' + encodeURIComponent(fbAuth.refreshToken)
+      });
+      const j = await r.json();
+      if (j.id_token) fbAuth = { idToken: j.id_token, refreshToken: j.refresh_token, expira: Date.now() + (Number(j.expires_in) - 300) * 1000 };
+    } catch (e) { console.warn('Renovação do token Firebase falhou:', e.message); }
+  }
+  return fbAuth && fbAuth.idToken;
+}
+function fbAuthSair() { fbAuth = null; fbAuthPronto = Promise.resolve(null); }
+// Anexa o token a toda chamada ao banco, sem precisar mexer em cada fetch do app
+const _fetchOriginal = window.fetch.bind(window);
+window.fetch = async function(url, opts) {
+  if (typeof url === 'string' && url.startsWith(FB_URL)) {
+    const t = await fbToken();
+    if (t) url += (url.includes('?') ? '&' : '?') + 'auth=' + encodeURIComponent(t);
+  }
+  return _fetchOriginal(url, opts);
+};
 const FB_NODE = 'registros';
 const STORAGE_KEY = 'gbex_ponto_registros'; // mantido para compatibilidade
 
@@ -1354,6 +1404,7 @@ function doLogin() {
     document.getElementById('login-erro').style.display = 'block'; return;
   }
   currentUser = { cpf, ...u };
+  fbAuthEntrar(cpf, pass);
   const lembrar = document.getElementById('login-remember').checked;
   if (lembrar) { localStorage.setItem('gbex_ponto_session', JSON.stringify({cpf, pass})); }
   else { localStorage.removeItem('gbex_ponto_session'); }
@@ -1362,6 +1413,7 @@ function doLogin() {
 
 function doLogout() {
   localStorage.removeItem('gbex_ponto_session');
+  fbAuthSair();
   currentUser = null;
   document.getElementById('screen-login').style.display = 'flex';
   document.getElementById('screen-app').style.display = 'none';
@@ -1376,7 +1428,7 @@ function tryAutoLogin() {
   try {
     const {cpf, pass} = JSON.parse(s);
     const u = USUARIOS[cpf];
-    if (u && u.senha === pass) { currentUser = {cpf,...u}; iniciarApp(); }
+    if (u && u.senha === pass) { currentUser = {cpf,...u}; fbAuthEntrar(cpf, pass); iniciarApp(); }
     else { localStorage.removeItem('gbex_ponto_session'); }
   } catch { localStorage.removeItem('gbex_ponto_session'); }
 }
