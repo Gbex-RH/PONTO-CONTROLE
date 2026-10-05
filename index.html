@@ -567,7 +567,7 @@
         <button class="empresa-btn gblog" id="btn-gblog" onclick="setEmpresa('GBLOG')">GBLOG</button>
       </div>
       <span class="topbar-user">Olá, <strong id="topbar-nome">—</strong></span>
-      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v80</span>
+      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v81</span>
       <button class="btn-ghost" onclick="doLogout()">Sair</button>
     </div>
   </div>
@@ -579,6 +579,7 @@
     <button class="tab-btn" id="tab-btn-pendencias" onclick="switchTab('pendencias')"><span class="tab-icon">🔔</span><span class="tab-label">Pendências do Dia</span><span class="tab-tooltip">Pendências do Dia</span></button>
     <button class="tab-btn" id="tab-btn-lancamento" onclick="switchTab('lancamento')"><span class="tab-icon">✏️</span><span class="tab-label">Lançamento</span><span class="tab-tooltip">Lançamento</span></button>
     <button class="tab-btn" id="tab-btn-meus" onclick="switchTab('meus')"><span class="tab-icon">📋</span><span class="tab-label">Meus Lançamentos</span><span class="tab-tooltip">Meus Lançamentos</span></button>
+    <button class="tab-btn hidden" id="tab-btn-jornadas" onclick="switchTab('jornadas')"><span class="tab-icon">🗓️</span><span class="tab-label">Jornadas</span><span class="tab-tooltip">Jornadas</span></button>
     <button class="tab-btn hidden" id="tab-btn-validacao" onclick="switchTab('validacao')"><span class="tab-icon">✅</span><span class="tab-label">Validação &amp; AFDT</span><span class="tab-tooltip">Validação &amp; AFDT</span></button>
     <button class="tab-btn hidden" id="tab-btn-auditoria" onclick="switchTab('auditoria')"><span class="tab-icon">🔍</span><span class="tab-label">Auditoria</span><span class="tab-tooltip">Auditoria</span></button>
     <button class="tab-btn hidden" id="tab-btn-relogio" onclick="switchTab('relogio')"><span class="tab-icon">🕐</span><span class="tab-label">Bater Ponto</span><span class="tab-tooltip">Bater Ponto</span></button>
@@ -678,7 +679,7 @@
             font-family:var(--font); font-size:13px; padding:7px 12px; border-radius:var(--radius-sm); outline:none;">
             <option value="">Todas as filiais</option>
           </select>
-          <input type="text" id="pend-busca" placeholder="Buscar funcionário..." oninput="renderPendencias()"
+          <input type="text" id="pend-busca" placeholder="Buscar funcionário..." oninput="debounceRender(renderPendencias)"
             style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 12px;border-radius:var(--radius-sm);outline:none;width:180px">
           <div class="date-range">
             <label>De:</label>
@@ -750,7 +751,7 @@
             <label style="font-size:12px;color:var(--text-muted);font-weight:600">Mês:</label>
             <select id="meus-mes" onchange="renderMeus()"></select>
           </div>
-          <input type="text" id="meus-busca" placeholder="Buscar funcionário..." oninput="renderMeus()"
+          <input type="text" id="meus-busca" placeholder="Buscar funcionário..." oninput="debounceRender(renderMeus)"
             style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 12px;border-radius:var(--radius-sm);outline:none;width:180px">
           <div class="date-range">
             <label>De:</label>
@@ -841,7 +842,7 @@
             <option value="">Todos (exportados e não)</option>
             <option value="sim">Já exportados</option>
           </select>
-          <input type="text" id="val-busca" placeholder="Buscar funcionário..." oninput="renderValidacao()" style="width:180px">
+          <input type="text" id="val-busca" placeholder="Buscar funcionário..." oninput="debounceRender(renderValidacao)" style="width:180px">
         </div>
 
         <div class="stats-bar" id="stats-bar"></div>
@@ -1087,6 +1088,49 @@
     </div>
   </div>
 
+  <!-- ─── TAB: JORNADAS (consulta — gestores e admin) ─── -->
+  <div class="tab-content" id="tab-jornadas">
+    <div class="main">
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-title"><span class="dot"></span> Jornadas da filial</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+          <label style="font-size:12px;color:var(--text-muted);font-weight:600">Filial:</label>
+          <select id="jor-filial" onchange="renderJornadas()"></select>
+          <span style="font-size:12px;color:var(--text-dim)">Somente consulta — alterações de jornada são feitas pelo RH no Fortes.</span>
+        </div>
+        <div class="val-table-wrap" id="jor-lista"></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="dot"></span> Jornada atual dos funcionários</div>
+        <input type="text" id="jor-busca" placeholder="Buscar funcionário..." oninput="debounceRender(renderJornadas)"
+          style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 12px;border-radius:var(--radius-sm);outline:none;width:220px;margin-bottom:12px">
+        <div class="val-table-wrap" id="jor-func"></div>
+      </div>
+      <div class="card" id="jor-form-card" style="display:none;margin-top:20px;border:1px solid var(--accent)">
+        <div class="card-title"><span class="dot"></span> Solicitar mudança de jornada</div>
+        <div id="jor-form-func" style="font-size:13px;margin-bottom:12px"></div>
+        <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end">
+          <div><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Nova jornada</label>
+            <select id="jor-form-nova" onchange="jorFormPreview()"></select></div>
+          <div><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">A partir de</label>
+            <input type="date" id="jor-form-data"></div>
+          <div style="flex:1;min-width:220px"><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Motivo</label>
+            <input type="text" id="jor-form-motivo" maxlength="300" placeholder="Ex.: mudança de turno da operação"
+              style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 12px;border-radius:var(--radius-sm);outline:none"></div>
+        </div>
+        <div id="jor-form-preview" style="font-size:12px;color:var(--text-muted);margin-top:10px"></div>
+        <div style="display:flex;gap:10px;margin-top:14px">
+          <button class="btn-afdt" id="jor-form-enviar" onclick="jorEnviarSolicitacao()">Enviar solicitação</button>
+          <button class="btn-ghost" onclick="jorFecharForm()">Cancelar</button>
+        </div>
+      </div>
+      <div class="card" style="margin-top:20px">
+        <div class="card-title"><span class="dot"></span> Solicitações de mudança</div>
+        <div class="val-table-wrap" id="jor-solic"><span style="font-size:13px;color:var(--text-dim)">Carregando...</span></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ─── TAB: MEUS LANÇAMENTOS (home office) ─── -->
   <div class="tab-content" id="tab-batidas">
     <div class="main">
@@ -1207,7 +1251,19 @@ const FB_URL = 'https://gbex-ponto-default-rtdb.firebaseio.com';
 const FB_NODE = 'registros';
 const STORAGE_KEY = 'gbex_ponto_registros'; // mantido para compatibilidade
 
-async function storageGet(key) {
+// Cache em memória de /registros (v81 — desempenho). O nó tem MBs e cada GET levava
+// segundos; antes, cada letra digitada numa busca baixava tudo de novo.
+// USO RESTRITO: só as telas de leitura (renderMeus / getValidacaoFiltrada) usam
+// {cache:true}. Todo fluxo de leitura-alteração-gravação continua buscando dado fresco,
+// para não sobrescrever o que outro usuário gravou nesse meio-tempo.
+const REG_CACHE_TTL_MS = 60000;
+let regCache = null, regCacheEm = 0;
+function invalidarCacheRegistros() { regCache = null; regCacheEm = 0; }
+
+async function storageGet(key, opts) {
+  if (opts && opts.cache && regCache && Date.now() - regCacheEm < REG_CACHE_TTL_MS) {
+    return regCache.slice();
+  }
   try {
     const res = await fetch(FB_URL + '/' + FB_NODE + '.json', {
       method: 'GET',
@@ -1215,8 +1271,9 @@ async function storageGet(key) {
     });
     if (!res.ok) throw new Error('Firebase GET falhou: ' + res.status);
     const data = await res.json();
-    if (!data) return [];
-    return Object.values(data);
+    const lista = data ? Object.values(data) : [];
+    regCache = lista; regCacheEm = Date.now();
+    return lista.slice();
   } catch(e) {
     // Silencioso antes do login; avisa só após login
     if (currentUser) console.warn('Firebase GET erro:', e);
@@ -1227,6 +1284,7 @@ async function storageGet(key) {
 
 async function storageSet(key, val) {
   // val é o array completo — reconstrói objeto keyed por id
+  invalidarCacheRegistros();
   try {
     const obj = {};
     val.forEach(r => { obj[r.id] = r; });
@@ -1251,6 +1309,7 @@ async function storageSet(key, val) {
 
 async function storageAppend(registro) {
   // Adiciona um único registro sem sobrescrever os outros
+  invalidarCacheRegistros();
   try {
     const res = await fetch(FB_URL + '/' + FB_NODE + '/' + registro.id + '.json', {
       method: 'PUT',
@@ -1346,7 +1405,7 @@ function iniciarApp() {
   //   - validacao/auditoria: somente admin
   //   - relogio/batidas: somente perfil empregado (sempre ocultas aqui)
   const visibilidade = {
-    pendencias: true, lancamento: true, meus: true,
+    pendencias: true, lancamento: true, meus: true, jornadas: true,
     validacao: isAdmin, auditoria: isAdmin,
     relogio: false, batidas: false
   };
@@ -1506,6 +1565,7 @@ function switchTab(tab) {
   if (tab === 'auditoria') initAuditoria();
   if (tab === 'relogio') hoInitRelogio();
   if (tab === 'batidas') hoRenderBatidasMes();
+  if (tab === 'jornadas') initJornadas();
 }
 
 // ─────────────────────────────────────────────
@@ -1927,13 +1987,17 @@ async function carregarPendencias() {
         // mas /pendencias_abertas/ (e item.codigo em toda a tela) nunca usa esse prefixo.
         // Marca as duas variantes para a pendência ser reconhecida como resolvida de qualquer jeito.
         const codSemPrefixo = r.codigo.replace('GBLOG_', '');
+        // Data real da batida (turno noturno lançado pela aba Lançamento no dia do turno
+        // resolve a pendência do dia seguinte — antes ela ficava aberta e era lançada de novo)
         if (r.entrada) {
-          pendLancadosSession.add(r.codigo + '_' + r.data + '_' + r.entrada.replace(':','-'));
-          pendLancadosSession.add(codSemPrefixo + '_' + r.data + '_' + r.entrada.replace(':','-'));
+          const dE = dataRealBatida(r, r.entrada, false);
+          pendLancadosSession.add(r.codigo + '_' + dE + '_' + r.entrada.replace(':','-'));
+          pendLancadosSession.add(codSemPrefixo + '_' + dE + '_' + r.entrada.replace(':','-'));
         }
         if (r.saida) {
-          pendLancadosSession.add(r.codigo + '_' + r.data + '_' + r.saida.replace(':','-'));
-          pendLancadosSession.add(codSemPrefixo + '_' + r.data + '_' + r.saida.replace(':','-'));
+          const dS = dataRealBatida(r, r.saida, true);
+          pendLancadosSession.add(r.codigo + '_' + dS + '_' + r.saida.replace(':','-'));
+          pendLancadosSession.add(codSemPrefixo + '_' + dS + '_' + r.saida.replace(':','-'));
         }
         // Folga/Falta/Atestado/Outro cobrem o dia inteiro — marcar por codigo+data, não por horário
         if (TIPOS_DIA_INTEIRO.includes(r.tipo)) {
@@ -2385,7 +2449,7 @@ function onObsKey(e) {
 //  MEUS LANÇAMENTOS (aba do gestor)
 // ─────────────────────────────────────────────
 async function renderMeus() {
-  const all = await storageGet(STORAGE_KEY) || [];
+  const all = await storageGet(STORAGE_KEY, { cache: true }) || [];
   const mesEl = document.getElementById('meus-mes');
   if (!mesEl) return;
   const mes = mesEl.value;
@@ -2546,6 +2610,22 @@ async function gravar() {
     showToast('Informe ao menos entrada ou saída.', 'error'); return;
   }
 
+  // Pendência aberta do mesmo funcionário no dia (ou no dia seguinte, turno noturno)?
+  // Lançar por aqui E pela aba Pendências mandava a mesma batida 2x para o Fortes.
+  try {
+    const cod = selectedFunc.codigo.replace('GBLOG_', '');
+    const dias = [data, addDiaISO(data, 1)].map(d => d.split('-').reverse().join('/'));
+    const resP = await fetch(FB_URL + '/pendencias_abertas.json');
+    const abertas = Object.values((resP.ok && await resP.json()) || {})
+      .filter(p => p && String(p.codigo) === cod && (p.empresa || 'GBEX') === currentEmpresa && dias.includes(p.data_ref));
+    if (abertas.length) {
+      const lista = abertas.map(p => p.data_ref + ' ' + (p.horario || '')).sort().join('\n');
+      if (!confirm('Este funcionário tem pendência(s) aberta(s):\n\n' + lista +
+        '\n\nO ideal é resolver pela aba Pendências (evita a mesma batida ir duas vezes para o Fortes).' +
+        '\n\nGravar por aqui mesmo assim?')) return;
+    }
+  } catch (e) { /* sem conexão para checar — segue gravando normalmente */ }
+
   const id = Date.now().toString(36) + Math.random().toString(36).slice(2,5);
   const registro = {
     id, data, tipo: currentTipo,
@@ -2638,7 +2718,7 @@ function toolToggle(headerBtn) {
 // tabela (renderValidacao) quanto pela exportação em Excel, para garantir que
 // o arquivo exportado seja sempre exatamente o que está sendo mostrado na tela.
 async function getValidacaoFiltrada() {
-  const all = await storageGet(STORAGE_KEY) || [];
+  const all = await storageGet(STORAGE_KEY, { cache: true }) || [];
   const mes = document.getElementById('val-mes').value;
   const filtFilial = document.getElementById('val-filial').value;
   const filtTipo = document.getElementById('val-tipo').value;
@@ -2973,6 +3053,7 @@ function extrairPendenciasDoTexto(paginas) {
   // turno vira a meia-noite (ex: turno de 31/07 com falta prevista às 03:00 de 01/08) — sem
   // isso, esses casos somem do filtro de período mesmo pertencendo ao mês certo.
   const itens = [];
+  const naoReconhecidas = [];
   let codigoAtual = null, nomeAtual = null, empresa = 'GBEX';
   let dataReferenciaAtual = null;
 
@@ -3008,9 +3089,14 @@ function extrairPendenciasDoTexto(paginas) {
       if (mc && codigoAtual) {
         // Linha de continuação não repete a Data Referência no PDF — usa a última vista
         itens.push({ codigo: codigoAtual, nome: nomeAtual, data_ref: mc[1], horario: mc[2], data_referencia: dataReferenciaAtual || mc[1], observacao: 'Batida Inexistente', empresa });
+        continue;
       }
+      // Tem "Batida Inexistente" mas não bateu com nenhum padrão — antes era descartada
+      // em silêncio; agora é listada na tela para conferência manual.
+      naoReconhecidas.push(linha);
     }
   }
+  itens.naoReconhecidas = naoReconhecidas;
   return itens;
 }
 
@@ -3032,11 +3118,19 @@ async function importAnalisar() {
 
   try {
     let todosItens = [];
+    const naoRec = [];
     for (const file of arquivos) {
       const paginas = await extrairTextoPDF(file);
       const itens = extrairPendenciasDoTexto(paginas);
       previewEl.innerHTML += '<br>' + file.name + ': ' + itens.length + ' pendência(s) encontrada(s)';
+      (itens.naoReconhecidas || []).forEach(l => naoRec.push(file.name + ': ' + l));
       todosItens = todosItens.concat(itens);
+    }
+    const escImp = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+    if (naoRec.length) {
+      previewEl.innerHTML += '<div style="margin-top:8px;padding:8px;border:1px solid var(--yellow);border-radius:var(--radius-sm);font-size:12px">' +
+        '⚠️ <b>' + naoRec.length + ' linha(s) com "Batida Inexistente" não foram reconhecidas</b> e NÃO serão importadas — confira e lance manualmente se preciso:' +
+        '<div style="max-height:150px;overflow-y:auto;margin-top:6px;color:var(--text-muted)">' + naoRec.map(escImp).join('<br>') + '</div></div>';
     }
 
     // Aplicar filtros de filial e período
@@ -3102,6 +3196,13 @@ async function importAnalisar() {
       const func = buscarFunc(item.codigo, item.empresa);
       if (func) item.filial = func.filial;
     });
+    // Sem filial: são importadas, mas nenhum gestor vê até o admin atribuir a filial
+    const semFilial = [...new Map(filtrados.filter(i => !i.filial).map(i => [i.codigo + '|' + i.empresa, i])).values()];
+    if (semFilial.length) {
+      previewEl.innerHTML += '<div style="margin-top:8px;padding:8px;border:1px solid var(--yellow);border-radius:var(--radius-sm);font-size:12px">' +
+        '⚠️ <b>' + semFilial.length + ' funcionário(s) sem filial cadastrada</b> — as pendências deles entram, mas nenhum gestor vê até você atribuir a filial (banner amarelo na aba Pendências):<br>' +
+        '<span style="color:var(--text-muted)">' + semFilial.map(i => escImp(i.codigo + ' ' + i.nome + ' (' + i.empresa + ')')).join('<br>') + '</span></div>';
+    }
 
     importItensCache = filtrados;
 
@@ -3355,34 +3456,51 @@ async function gerarAFDT() {
 
   const linhas = [];
   const erros = [];
+  const repetidas = [];
+
+  // Linha AFDT de uma batida: PIS + DDMMAAAA + HHMM. A data vem de dataRealBatida()
+  // (corrige batida de madrugada de turno noturno lançada no dia do turno).
+  const linhaAFDT = (r, hora, ehSaida) => {
+    const [ano, mes2, dia] = dataRealBatida(r, hora, ehSaida).split('-');
+    return pisMap[r.codigo].padStart(11,'0') + dia + mes2 + ano + hora.replace(':','');
+  };
+  // Batidas que já foram para o Fortes em AFDTs anteriores — não mandar de novo
+  // (era assim que a mesma batida chegava duas vezes: lançada pela aba Lançamento no dia
+  // do turno E pela aba Pendências no dia seguinte).
+  const jaEnviadas = new Set();
+  all.forEach(r => {
+    if (!r.exportado_afdt || r.tipo !== 'lancamento' || !pisMap[r.codigo]) return;
+    if ((r.empresa || 'GBEX') !== currentEmpresa) return;
+    if (dados.some(d => d.id === r.id)) return; // quando "incluir já exportados", não conta a si mesmo
+    if (r.entrada) jaEnviadas.add(linhaAFDT(r, r.entrada, false));
+    if (r.saida) jaEnviadas.add(linhaAFDT(r, r.saida, true));
+  });
+  const vistas = new Set();
+  const addLinha = (r, hora, ehSaida) => {
+    const l = linhaAFDT(r, hora, ehSaida);
+    if (vistas.has(l) || jaEnviadas.has(l)) {
+      const [a, m, d] = dataRealBatida(r, hora, ehSaida).split('-');
+      repetidas.push(`${r.nome} — ${d}/${m}/${a} ${hora}` + (jaEnviadas.has(l) ? ' (já enviada num AFDT anterior)' : ' (lançada 2x)'));
+      return;
+    }
+    vistas.add(l);
+    linhas.push(l);
+  };
 
   dados.forEach(r => {
-    const pis = pisMap[r.codigo];
-    if (!pis) { erros.push(`${r.nome} (${r.codigo}) sem PIS cadastrado`); return; }
-    const pf = pis.padStart(11,'0');
-    const [ano,mes2,dia] = r.data.split('-');
-    const d2 = `${dia}${mes2}${ano}`;
-
-    if (r.entrada) {
-      const h = r.entrada.replace(':',''); // HHMM = 4 chars → total 11+8+4 = 23
-      linhas.push(pf + d2 + h);
-    }
-    if (r.saida) {
-      // Detecção automática de virada de turno noturno: saída < entrada.
-      // (campo saida_data foi removido — nenhuma tela do app chega a preenchê-lo)
-      let dataS = d2;
-      if (r.entrada && r.saida < r.entrada) {
-        const dt = new Date(r.data + 'T00:00:00');
-        dt.setDate(dt.getDate() + 1);
-        const [a2,m2,d2b] = dt.toISOString().split('T')[0].split('-');
-        dataS = `${d2b}${m2}${a2}`;
-      }
-      const h = r.saida.replace(':',''); // HHMM = 4 chars
-      linhas.push(pf + dataS + h);
-    }
+    if (!pisMap[r.codigo]) { erros.push(`${r.nome} (${r.codigo}) sem PIS cadastrado`); return; }
+    if (r.entrada) addLinha(r, r.entrada, false);
+    if (r.saida) addLinha(r, r.saida, true);
   });
 
-  if (!linhas.length) { showToast('Nenhuma linha AFDT gerada. Verifique se os funcionários têm PIS cadastrado.', 'error'); return; }
+  if (repetidas.length) {
+    const ok = confirm('⚠️ ' + repetidas.length + ' batida(s) repetida(s) foram RETIRADAS do arquivo para não duplicar no Fortes:\n\n' +
+      repetidas.slice(0, 20).join('\n') + (repetidas.length > 20 ? '\n... +' + (repetidas.length - 20) : '') +
+      '\n\nContinuar gerando o arquivo sem elas?');
+    if (!ok) return;
+  }
+
+  if (!linhas.length) { showToast(repetidas.length ? 'Todas as batidas já tinham sido enviadas — nada novo no arquivo.' : 'Nenhuma linha AFDT gerada. Verifique se os funcionários têm PIS cadastrado.', 'error'); return; }
 
   // Validação formato
   const invalidas = linhas.filter(l => l.length !== 23);
@@ -3516,6 +3634,236 @@ async function gerarAFDTHomeOffice() {
   }
 
   showToast(`✅ AFDT Home Office gerado: ${linhas.length} linha(s)`, 'success');
+}
+
+// ─────────────────────────────────────────────
+//  JORNADAS (v81) — consulta. Fonte: Levantamento_Jornadas_Consolidado_2026.xlsx
+//  (só GBEX). Gerado por script; atualizar regenerando a partir da planilha.
+// ─────────────────────────────────────────────
+const JORNADAS = {"FILIAL - FORTALEZA": [{"grupo": "FOR-01", "escala": "Semanal", "semana": "36h", "codigos": ["000096", "000250", "000309"], "linhas": [{"dias": "Seg a Qui", "e1": "18:00", "s1": "22:00", "e2": "23:00", "s2": "04:00", "hdia": "9h"}, {"dias": "Sex", "e1": "18:00", "s1": "22:00", "e2": "23:00", "s2": "03:00", "hdia": "8h"}]}, {"grupo": "FOR-02", "escala": "Semanal", "semana": "36h", "codigos": ["000042", "000277", "000285"], "linhas": [{"dias": "Seg a Qui", "e1": "07:30", "s1": "12:00", "e2": "13:00", "s2": "17:30", "hdia": "9h"}, {"dias": "Sex", "e1": "07:30", "s1": "12:00", "e2": "13:30", "s2": "17:00", "hdia": "8h"}]}, {"grupo": "FOR-03", "escala": "Semanal", "semana": "36h", "codigos": ["000079"], "linhas": [{"dias": "Seg a Qui", "e1": "07:30", "s1": "12:00", "e2": "13:00", "s2": "17:30", "hdia": "9h"}, {"dias": "Sex", "e1": "07:30", "s1": "11:30", "e2": "13:30", "s2": "17:30", "hdia": "8h"}]}, {"grupo": "FOR-04", "escala": "Semanal", "semana": "20h", "codigos": ["000017"], "linhas": [{"dias": "Seg a Sex", "e1": "07:30", "s1": "11:30", "e2": "", "s2": "", "hdia": "4h"}]}, {"grupo": "FOR-05", "escala": "Semanal", "semana": "20h", "codigos": ["000019", "Histórico"], "linhas": [{"dias": "Seg a Sex", "e1": "08:00", "s1": "12:00", "e2": "", "s2": "", "hdia": "4h"}]}, {"grupo": "FOR-06", "escala": "Semanal", "semana": "36h", "codigos": ["000038"], "linhas": [{"dias": "Seg a Qui", "e1": "08:00", "s1": "12:00", "e2": "14:00", "s2": "19:00", "hdia": "9h"}, {"dias": "Sex", "e1": "08:00", "s1": "12:00", "e2": "14:00", "s2": "18:00", "hdia": "8h"}]}, {"grupo": "FOR-07", "escala": "Semanal", "semana": "36h", "codigos": ["000118"], "linhas": [{"dias": "Seg a Qui", "e1": "08:00", "s1": "12:00", "e2": "13:00", "s2": "18:00", "hdia": "9h"}, {"dias": "Sex", "e1": "08:00", "s1": "12:00", "e2": "13:30", "s2": "17:30", "hdia": "8h"}]}, {"grupo": "FOR-08", "escala": "Semanal", "semana": "36h", "codigos": ["000021"], "linhas": [{"dias": "Seg a Qui", "e1": "07:30", "s1": "12:30", "e2": "13:30", "s2": "17:30", "hdia": "9h"}, {"dias": "Sex", "e1": "07:30", "s1": "12:00", "e2": "13:30", "s2": "17:00", "hdia": "8h"}]}, {"grupo": "FOR-09", "escala": "Semanal", "semana": "36h", "codigos": ["000026"], "linhas": [{"dias": "Seg a Qui", "e1": "07:00", "s1": "11:00", "e2": "13:00", "s2": "18:00", "hdia": "9h"}, {"dias": "Sex", "e1": "07:00", "s1": "11:00", "e2": "13:00", "s2": "17:00", "hdia": "8h"}]}, {"grupo": "FOR-10", "escala": "Semanal", "semana": "44h", "codigos": ["000069"], "linhas": [{"dias": "Seg a Sáb", "e1": "18:00", "s1": "22:00", "e2": "23:00", "s2": "02:20", "hdia": "7h20"}]}, {"grupo": "FOR-11", "escala": "Semanal", "semana": "36h", "codigos": ["000071"], "linhas": [{"dias": "Seg a Qui", "e1": "07:30", "s1": "12:00", "e2": "14:00", "s2": "18:30", "hdia": "9h"}, {"dias": "Sex", "e1": "07:30", "s1": "12:00", "e2": "14:00", "s2": "17:30", "hdia": "8h"}]}, {"grupo": "FOR-12", "escala": "Semanal", "semana": "36h", "codigos": ["000147"], "linhas": [{"dias": "Seg a Qui", "e1": "08:00", "s1": "12:00", "e2": "13:30", "s2": "18:30", "hdia": "9h"}, {"dias": "Sex", "e1": "08:00", "s1": "12:00", "e2": "13:30", "s2": "17:30", "hdia": "8h"}]}, {"grupo": "FOR-13", "escala": "Semanal", "semana": "36h", "codigos": ["000221"], "linhas": [{"dias": "Seg a Qui", "e1": "08:00", "s1": "12:00", "e2": "13:00", "s2": "18:00", "hdia": "9h"}, {"dias": "Sex", "e1": "08:00", "s1": "12:00", "e2": "13:00", "s2": "17:00", "hdia": "8h"}]}, {"grupo": "FOR-14", "escala": "Semanal", "semana": "36h", "codigos": ["000268"], "linhas": [{"dias": "Seg a Qui", "e1": "07:00", "s1": "12:00", "e2": "13:00", "s2": "17:00", "hdia": "9h"}, {"dias": "Sex", "e1": "07:00", "s1": "12:00", "e2": "13:00", "s2": "16:00", "hdia": "8h"}]}, {"grupo": "FOR-15", "escala": "Semanal", "semana": "36h", "codigos": ["000275"], "linhas": [{"dias": "Seg a Qui", "e1": "09:00", "s1": "12:00", "e2": "13:00", "s2": "19:00", "hdia": "9h"}, {"dias": "Sex", "e1": "09:00", "s1": "12:00", "e2": "13:00", "s2": "18:00", "hdia": "8h"}]}, {"grupo": "FOR-16", "escala": "Semanal", "semana": "36h", "codigos": ["000294"], "linhas": [{"dias": "Seg a Qui", "e1": "06:00", "s1": "11:00", "e2": "12:00", "s2": "16:00", "hdia": "9h"}, {"dias": "Sex", "e1": "06:00", "s1": "11:00", "e2": "12:00", "s2": "15:00", "hdia": "8h"}]}], "FILIAL - RECIFE": [{"grupo": "REC-01", "escala": "Semanal", "semana": "40h", "codigos": ["000037", "000139"], "linhas": [{"dias": "Seg a Sex", "e1": "08:00", "s1": "12:00", "e2": "14:00", "s2": "18:00", "hdia": "8h"}, {"dias": "Sáb", "e1": "08:00", "s1": "12:00", "e2": "", "s2": "", "hdia": "4h"}]}, {"grupo": "REC-02", "escala": "Semanal", "semana": "44h", "codigos": ["000130"], "linhas": [{"dias": "Seg a Sáb", "e1": "21:00", "s1": "00:00", "e2": "02:00", "s2": "06:20", "hdia": "7h20"}]}, {"grupo": "REC-03", "escala": "Semanal", "semana": "36h", "codigos": ["000134"], "linhas": [{"dias": "Seg a Qui", "e1": "07:30", "s1": "12:00", "e2": "13:00", "s2": "17:30", "hdia": "9h"}, {"dias": "Sex", "e1": "07:30", "s1": "12:00", "e2": "14:00", "s2": "17:30", "hdia": "8h"}]}, {"grupo": "REC-04", "escala": "Semanal", "semana": "40h", "codigos": ["000297"], "linhas": [{"dias": "Seg a Sex", "e1": "13:00", "s1": "19:00", "e2": "20:00", "s2": "22:00", "hdia": "8h"}, {"dias": "Sáb", "e1": "08:00", "s1": "12:00", "e2": "", "s2": "", "hdia": "4h"}]}, {"grupo": "REC-05", "escala": "Semanal", "semana": "40h", "codigos": ["000030"], "linhas": [{"dias": "Seg a Sex", "e1": "08:00", "s1": "12:00", "e2": "13:30", "s2": "17:30", "hdia": "8h"}, {"dias": "Sáb", "e1": "08:00", "s1": "12:00", "e2": "", "s2": "", "hdia": "4h"}]}, {"grupo": "REC-06", "escala": "Semanal", "semana": "44h", "codigos": ["000075"], "linhas": [{"dias": "Seg a Sáb", "e1": "07:00", "s1": "11:00", "e2": "13:00", "s2": "16:20", "hdia": "7h20"}]}, {"grupo": "REC-07", "escala": "Semanal", "semana": "20h", "codigos": ["000180"], "linhas": [{"dias": "Seg a Sex", "e1": "08:00", "s1": "12:00", "e2": "", "s2": "", "hdia": "4h"}]}, {"grupo": "REC-08", "escala": "Semanal", "semana": "36h", "codigos": ["000293"], "linhas": [{"dias": "Seg a Qui", "e1": "20:00", "s1": "00:00", "e2": "02:00", "s2": "07:00", "hdia": "9h"}, {"dias": "Sex", "e1": "20:00", "s1": "00:00", "e2": "02:00", "s2": "06:00", "hdia": "8h"}]}, {"grupo": "REC-09", "escala": "Semanal", "semana": "36h", "codigos": ["000002"], "linhas": [{"dias": "Seg a Qui", "e1": "08:00", "s1": "12:00", "e2": "14:00", "s2": "19:00", "hdia": "9h"}]}, {"grupo": "REC-10", "escala": "Semanal", "semana": "36h", "codigos": ["000050"], "linhas": [{"dias": "Seg a Qui", "e1": "07:30", "s1": "12:00", "e2": "14:00", "s2": "18:30", "hdia": "9h"}, {"dias": "Sex", "e1": "07:30", "s1": "12:00", "e2": "14:00", "s2": "17:30", "hdia": "8h"}]}, {"grupo": "REC-11", "escala": "Semanal", "semana": "40h", "codigos": ["000207"], "linhas": [{"dias": "Seg a Sex", "e1": "07:30", "s1": "12:00", "e2": "14:00", "s2": "17:30", "hdia": "8h"}, {"dias": "Sáb", "e1": "07:30", "s1": "11:30", "e2": "", "s2": "", "hdia": "4h"}]}, {"grupo": "REC-12", "escala": "Semanal", "semana": "20h", "codigos": ["Histórico"], "linhas": [{"dias": "Seg a Sex", "e1": "13:00", "s1": "17:00", "e2": "", "s2": "", "hdia": "4h"}]}], "FILIAL - BAYEUX": [{"grupo": "JPA-01", "escala": "Semanal", "semana": "40h", "codigos": ["000113"], "linhas": [{"dias": "Seg a Sex", "e1": "14:00", "s1": "17:00", "e2": "18:00", "s2": "23:00", "hdia": "8h"}, {"dias": "Sáb", "e1": "18:00", "s1": "22:00", "e2": "", "s2": "", "hdia": "4h"}]}, {"grupo": "JPA-02", "escala": "Semanal", "semana": "40h", "codigos": ["000139", "000194"], "linhas": [{"dias": "Seg a Sex", "e1": "08:00", "s1": "12:00", "e2": "14:00", "s2": "18:00", "hdia": "8h"}, {"dias": "Sáb", "e1": "08:00", "s1": "12:00", "e2": "", "s2": "", "hdia": "4h"}]}, {"grupo": "JPA-03", "escala": "Semanal", "semana": "40h", "codigos": ["000142"], "linhas": [{"dias": "Seg a Sex", "e1": "08:00", "s1": "12:00", "e2": "13:00", "s2": "17:00", "hdia": "8h"}, {"dias": "Sáb", "e1": "08:00", "s1": "12:00", "e2": "", "s2": "", "hdia": "4h"}]}, {"grupo": "JPA-04", "escala": "Semanal", "semana": "40h", "codigos": ["000003"], "linhas": [{"dias": "Seg a Sex", "e1": "14:00", "s1": "18:00", "e2": "19:00", "s2": "23:00", "hdia": "8h"}, {"dias": "Sáb", "e1": "08:00", "s1": "12:00", "e2": "", "s2": "", "hdia": "4h"}]}, {"grupo": "JPA-05", "escala": "Semanal", "semana": "36h", "codigos": ["000143"], "linhas": [{"dias": "Seg a Qui", "e1": "08:00", "s1": "12:00", "e2": "13:00", "s2": "18:00", "hdia": "9h"}, {"dias": "Sex", "e1": "08:00", "s1": "12:00", "e2": "14:00", "s2": "18:00", "hdia": "8h"}]}, {"grupo": "JPA-06", "escala": "Semanal", "semana": "40h", "codigos": ["000347"], "linhas": [{"dias": "Seg a Sex", "e1": "07:30", "s1": "12:00", "e2": "13:00", "s2": "16:30", "hdia": "8h"}, {"dias": "Sáb", "e1": "08:00", "s1": "12:00", "e2": "", "s2": "", "hdia": "4h"}]}], "FILIAL - JUAZEIRO DO NORTE": [{"grupo": "JUA-01", "escala": "Semanal", "semana": "27h", "codigos": ["000300"], "linhas": [{"dias": "Seg, Qua e Sex", "e1": "08:00", "s1": "12:00", "e2": "14:00", "s2": "19:00", "hdia": "9h"}, {"dias": "Ter e Qui", "e1": "08:00", "s1": "12:00", "e2": "14:00", "s2": "18:30", "hdia": "8h30"}]}], "FILIAL - MACEIO": [{"grupo": "MCZ-01", "escala": "Semanal", "semana": "40h", "codigos": ["000037"], "linhas": [{"dias": "Seg a Sex", "e1": "08:00", "s1": "12:00", "e2": "14:00", "s2": "18:00", "hdia": "8h"}, {"dias": "Sáb", "e1": "08:00", "s1": "12:00", "e2": "", "s2": "", "hdia": "4h"}]}, {"grupo": "MCZ-02", "escala": "Semanal", "semana": "40h", "codigos": ["000074"], "linhas": [{"dias": "Seg a Sex", "e1": "10:00", "s1": "13:00", "e2": "14:00", "s2": "19:00", "hdia": "8h"}, {"dias": "Sáb", "e1": "08:00", "s1": "12:00", "e2": "", "s2": "", "hdia": "4h"}]}], "FILIAL - MOSSORO": [{"grupo": "MOS-01", "escala": "Semanal", "semana": "40h", "codigos": ["000131"], "linhas": [{"dias": "Seg a Sex", "e1": "07:00", "s1": "11:00", "e2": "13:00", "s2": "17:00", "hdia": "8h"}, {"dias": "Sáb", "e1": "07:00", "s1": "11:00", "e2": "", "s2": "", "hdia": "4h"}]}], "FILIAL - PARNAMIRIM": [{"grupo": "NAT-01", "escala": "Semanal", "semana": "36h", "codigos": ["000050"], "linhas": [{"dias": "Seg a Qui", "e1": "07:30", "s1": "12:00", "e2": "14:00", "s2": "18:30", "hdia": "9h"}, {"dias": "Sex", "e1": "07:30", "s1": "12:00", "e2": "14:00", "s2": "17:30", "hdia": "8h"}]}, {"grupo": "NAT-02", "escala": "Semanal", "semana": "40h", "codigos": ["000025"], "linhas": [{"dias": "Seg a Sex", "e1": "09:00", "s1": "12:00", "e2": "14:00", "s2": "19:00", "hdia": "8h"}, {"dias": "Sáb", "e1": "09:00", "s1": "13:00", "e2": "", "s2": "", "hdia": "4h"}]}, {"grupo": "NAT-03", "escala": "Semanal", "semana": "40h", "codigos": ["000125"], "linhas": [{"dias": "Seg a Sex", "e1": "07:00", "s1": "11:00", "e2": "13:00", "s2": "17:00", "hdia": "8h"}, {"dias": "Sáb", "e1": "07:00", "s1": "11:00", "e2": "", "s2": "", "hdia": "4h"}]}, {"grupo": "NAT-04", "escala": "Semanal", "semana": "40h", "codigos": ["000128"], "linhas": [{"dias": "Seg a Sex", "e1": "07:30", "s1": "12:00", "e2": "14:00", "s2": "17:30", "hdia": "8h"}, {"dias": "Sáb", "e1": "07:30", "s1": "11:30", "e2": "", "s2": "", "hdia": "4h"}]}, {"grupo": "NAT-05", "escala": "Semanal", "semana": "36h", "codigos": ["000136"], "linhas": [{"dias": "Seg a Qui", "e1": "09:00", "s1": "12:00", "e2": "14:00", "s2": "20:00", "hdia": "9h"}, {"dias": "Sex", "e1": "09:00", "s1": "12:00", "e2": "15:00", "s2": "20:00", "hdia": "8h"}]}, {"grupo": "NAT-06", "escala": "Semanal", "semana": "40h", "codigos": ["000030"], "linhas": [{"dias": "Seg a Sex", "e1": "08:00", "s1": "12:00", "e2": "13:30", "s2": "17:30", "hdia": "8h"}, {"dias": "Sáb", "e1": "08:00", "s1": "12:00", "e2": "", "s2": "", "hdia": "4h"}]}, {"grupo": "NAT-07", "escala": "Semanal", "semana": "36h", "codigos": ["000035"], "linhas": [{"dias": "Seg a Qua e Sex", "e1": "07:30", "s1": "13:00", "e2": "14:00", "s2": "17:30", "hdia": "9h"}, {"dias": "Qui", "e1": "07:30", "s1": "12:00", "e2": "14:00", "s2": "17:30", "hdia": "8h"}]}, {"grupo": "NAT-08", "escala": "Semanal", "semana": "36h", "codigos": ["000161"], "linhas": [{"dias": "Seg a Qui", "e1": "07:00", "s1": "12:00", "e2": "14:00", "s2": "18:00", "hdia": "9h"}, {"dias": "Sex", "e1": "08:00", "s1": "12:00", "e2": "14:00", "s2": "18:00", "hdia": "8h"}]}], "FILIAL - SAO LUIS": [{"grupo": "SLU-01", "escala": "Semanal", "semana": "40h", "codigos": ["000037", "000102", "000139", "000194"], "linhas": [{"dias": "Seg a Sex", "e1": "08:00", "s1": "12:00", "e2": "14:00", "s2": "18:00", "hdia": "8h"}, {"dias": "Sáb", "e1": "08:00", "s1": "12:00", "e2": "", "s2": "", "hdia": "4h"}]}, {"grupo": "SLU-02", "escala": "Semanal", "semana": "36h", "codigos": ["000079"], "linhas": [{"dias": "Seg a Qui", "e1": "07:30", "s1": "12:00", "e2": "13:00", "s2": "17:30", "hdia": "9h"}, {"dias": "Sex", "e1": "07:30", "s1": "11:30", "e2": "13:30", "s2": "17:30", "hdia": "8h"}]}], "FILIAL - SOBRAL": [{"grupo": "SOB-01", "escala": "Semanal", "semana": "40h", "codigos": ["000037", "000138"], "linhas": [{"dias": "Seg a Sex", "e1": "08:00", "s1": "12:00", "e2": "14:00", "s2": "18:00", "hdia": "8h"}, {"dias": "Sáb", "e1": "08:00", "s1": "12:00", "e2": "", "s2": "", "hdia": "4h"}]}], "FILIAL - TERESINA": [{"grupo": "THE-01", "escala": "Semanal", "semana": "36h", "codigos": ["000079"], "linhas": [{"dias": "Seg a Qui", "e1": "07:30", "s1": "12:00", "e2": "13:00", "s2": "17:30", "hdia": "9h"}, {"dias": "Sex", "e1": "07:30", "s1": "11:30", "e2": "13:30", "s2": "17:30", "hdia": "8h"}]}, {"grupo": "THE-02", "escala": "Semanal", "semana": "40h", "codigos": ["000037", "000281", "000282"], "linhas": [{"dias": "Seg a Sex", "e1": "08:00", "s1": "12:00", "e2": "14:00", "s2": "18:00", "hdia": "8h"}, {"dias": "Sáb", "e1": "08:00", "s1": "12:00", "e2": "", "s2": "", "hdia": "4h"}]}, {"grupo": "THE-03", "escala": "Semanal", "semana": "40h", "codigos": ["000064"], "linhas": [{"dias": "Seg a Sex", "e1": "13:00", "s1": "18:00", "e2": "19:00", "s2": "22:00", "hdia": "8h"}, {"dias": "Sáb", "e1": "08:00", "s1": "12:00", "e2": "", "s2": "", "hdia": "4h"}]}, {"grupo": "THE-04", "escala": "Semanal", "semana": "40h", "codigos": ["000213 (histórico)"], "linhas": [{"dias": "Seg a Sex", "e1": "13:00", "s1": "19:00", "e2": "20:00", "s2": "22:00", "hdia": "8h"}, {"dias": "Sáb", "e1": "08:00", "s1": "12:00", "e2": "", "s2": "", "hdia": "4h"}]}, {"grupo": "THE-05", "escala": "Semanal", "semana": "40h", "codigos": ["000048"], "linhas": [{"dias": "Seg a Sex", "e1": "07:00", "s1": "11:00", "e2": "12:00", "s2": "16:00", "hdia": "8h"}, {"dias": "Sáb", "e1": "07:00", "s1": "11:00", "e2": "", "s2": "", "hdia": "4h"}]}], "MATRIZ": [{"grupo": "MTZ-01", "escala": "Semanal", "semana": "36h", "codigos": ["000042", "000285"], "linhas": [{"dias": "Seg a Qui", "e1": "07:30", "s1": "12:00", "e2": "13:00", "s2": "17:30", "hdia": "9h"}, {"dias": "Sex", "e1": "07:30", "s1": "12:00", "e2": "13:30", "s2": "17:00", "hdia": "8h"}]}, {"grupo": "MTZ-02", "escala": "12x36", "semana": "Variável", "codigos": ["000108"], "linhas": [{"dias": "Dia 01 do ciclo", "e1": "07:00", "s1": "19:00", "e2": "", "s2": "", "hdia": "12h"}, {"dias": "Dia 02 do ciclo", "e1": "", "s1": "", "e2": "", "s2": "", "hdia": "0h"}]}, {"grupo": "MTZ-03", "escala": "Semanal", "semana": "20h", "codigos": ["000017", "000214"], "linhas": [{"dias": "Seg a Sex", "e1": "07:30", "s1": "11:30", "e2": "", "s2": "", "hdia": "4h"}]}, {"grupo": "MTZ-04", "escala": "12x36", "semana": "Variável", "codigos": ["000256"], "linhas": [{"dias": "Dia 01 do ciclo", "e1": "19:00", "s1": "07:00", "e2": "", "s2": "", "hdia": "12h"}, {"dias": "Dia 02 do ciclo", "e1": "", "s1": "", "e2": "", "s2": "", "hdia": "0h"}]}, {"grupo": "MTZ-05", "escala": "Semanal", "semana": "36h", "codigos": ["000023"], "linhas": [{"dias": "Seg a Qui", "e1": "07:30", "s1": "12:30", "e2": "13:30", "s2": "17:30", "hdia": "9h"}, {"dias": "Sex", "e1": "07:30", "s1": "12:30", "e2": "14:00", "s2": "17:00", "hdia": "8h"}]}, {"grupo": "MTZ-06", "escala": "Semanal", "semana": "36h", "codigos": ["000079"], "linhas": [{"dias": "Seg a Qui", "e1": "07:30", "s1": "12:00", "e2": "13:00", "s2": "17:30", "hdia": "9h"}, {"dias": "Sex", "e1": "07:30", "s1": "11:30", "e2": "13:30", "s2": "17:30", "hdia": "8h"}]}, {"grupo": "MTZ-07", "escala": "Semanal", "semana": "36h", "codigos": ["000117"], "linhas": [{"dias": "Seg a Qui", "e1": "07:15", "s1": "11:30", "e2": "12:30", "s2": "17:15", "hdia": "9h"}, {"dias": "Sex", "e1": "07:15", "s1": "11:30", "e2": "13:00", "s2": "16:45", "hdia": "8h"}]}, {"grupo": "MTZ-08", "escala": "Semanal", "semana": "36h", "codigos": ["000160"], "linhas": [{"dias": "Seg a Qui", "e1": "07:00", "s1": "13:00", "e2": "14:00", "s2": "17:00", "hdia": "9h"}, {"dias": "Sex", "e1": "07:00", "s1": "13:00", "e2": "14:30", "s2": "16:30", "hdia": "8h"}]}, {"grupo": "MTZ-09", "escala": "Semanal", "semana": "36h", "codigos": ["000178"], "linhas": [{"dias": "Seg a Qui", "e1": "07:30", "s1": "11:30", "e2": "12:30", "s2": "17:30", "hdia": "9h"}, {"dias": "Sex", "e1": "07:30", "s1": "11:30", "e2": "13:00", "s2": "17:00", "hdia": "8h"}]}, {"grupo": "MTZ-10", "escala": "Semanal", "semana": "36h", "codigos": ["000229"], "linhas": [{"dias": "Seg a Qui", "e1": "07:30", "s1": "12:30", "e2": "13:30", "s2": "17:30", "hdia": "9h"}, {"dias": "Sex", "e1": "07:30", "s1": "12:00", "e2": "13:30", "s2": "17:00", "hdia": "8h"}]}, {"grupo": "MTZ-11", "escala": "Semanal", "semana": "27h", "codigos": ["000238"], "linhas": [{"dias": "Seg a Ter e Qui", "e1": "07:30", "s1": "11:30", "e2": "12:30", "s2": "17:30", "hdia": "9h"}, {"dias": "Qua", "e1": "07:30", "s1": "12:30", "e2": "13:30", "s2": "17:30", "hdia": "9h"}, {"dias": "Sex", "e1": "07:30", "s1": "11:30", "e2": "13:00", "s2": "17:00", "hdia": "8h"}]}, {"grupo": "MTZ-12", "escala": "Semanal", "semana": "36h", "codigos": ["000274"], "linhas": [{"dias": "Seg a Qui", "e1": "07:15", "s1": "12:30", "e2": "13:30", "s2": "17:15", "hdia": "9h"}, {"dias": "Sex", "e1": "07:15", "s1": "12:30", "e2": "14:00", "s2": "16:45", "hdia": "8h"}]}, {"grupo": "MTZ-13", "escala": "Semanal", "semana": "36h", "codigos": ["000286"], "linhas": [{"dias": "Seg a Qui", "e1": "08:00", "s1": "12:00", "e2": "13:00", "s2": "18:00", "hdia": "9h"}, {"dias": "Sex", "e1": "08:00", "s1": "12:00", "e2": "14:00", "s2": "18:00", "hdia": "8h"}]}, {"grupo": "MTZ-14", "escala": "Semanal", "semana": "20h", "codigos": ["000389"], "linhas": [{"dias": "Seg a Sex", "e1": "13:30", "s1": "17:30", "e2": "", "s2": "", "hdia": "4h"}]}]};
+const JORNADA_FUNC = {"000538": "FOR-02", "000588": "FOR-06", "000723": "FOR-16", "000745": "FOR-06", "000843": "FOR-01", "000846": "FOR-03", "000876": "FOR-08", "001017": "FOR-02", "001084": "FOR-02", "001110": "FOR-02", "001113": "FOR-02", "001157": "FOR-14", "001182": "FOR-11", "001192": "FOR-01", "001196": "FOR-02", "001276": "FOR-02", "001300": "FOR-01", "001307": "FOR-02", "001334": "FOR-01", "001369": "FOR-02", "001370": "FOR-02", "001375": "FOR-02", "001377": "FOR-01", "001382": "FOR-03", "001383": "FOR-02", "001385": "FOR-02", "001398": "FOR-02", "001404": "FOR-02", "001408": "FOR-15", "001418": "FOR-02", "001434": "FOR-01", "001435": "FOR-13", "001439": "FOR-02", "001453": "FOR-01", "001470": "FOR-02", "001472": "FOR-02", "001478": "FOR-02", "001507": "FOR-02", "001508": "FOR-01", "001534": "FOR-01", "001540": "FOR-01", "001542": "FOR-02", "001548": "FOR-02", "001550": "FOR-09", "001564": "FOR-03", "001579": "FOR-01", "001580": "FOR-01", "001592": "FOR-12", "001594": "FOR-01", "001595": "FOR-03", "001596": "FOR-01", "001597": "FOR-01", "001616": "FOR-02", "001617": "FOR-02", "001620": "FOR-01", "001625": "FOR-03", "001632": "FOR-01", "001636": "FOR-02", "001658": "FOR-01", "001659": "FOR-01", "001662": "FOR-03", "001663": "FOR-03", "001678": "FOR-03", "001681": "FOR-02", "001682": "FOR-03", "001687": "FOR-01", "001688": "FOR-01", "001690": "FOR-05", "001710": "FOR-01", "001711": "FOR-03", "001720": "FOR-07", "001721": "FOR-07", "001724": "FOR-03", "001725": "FOR-03", "001726": "FOR-03", "001727": "FOR-01", "001729": "FOR-03", "001736": "FOR-03", "001737": "FOR-01", "001738": "FOR-01", "001739": "FOR-01", "001740": "FOR-01", "001741": "FOR-03", "001745": "FOR-04", "001747": "FOR-05", "001749": "FOR-04", "001761": "FOR-03", "001762": "FOR-03", "001763": "FOR-01", "001764": "FOR-10", "001765": "FOR-03", "000093": "REC-01", "000138": "REC-01", "000392": "REC-01", "000401": "REC-02", "000589": "REC-01", "000605": "REC-02", "000783": "REC-01", "000795": "REC-02", "000880": "REC-01", "000921": "REC-01", "000937": "REC-01", "000964": "REC-01", "001001": "REC-03", "001032": "REC-08", "001091": "REC-10", "001112": "REC-03", "001151": "REC-02", "001178": "REC-01", "001183": "REC-03", "001212": "REC-01", "001260": "REC-11", "001319": "REC-04", "001359": "REC-08", "001379": "REC-01", "001394": "REC-01", "001406": "REC-03", "001425": "REC-03", "001452": "REC-01", "001459": "REC-03", "001473": "REC-01", "001477": "REC-02", "001501": "REC-01", "001558": "REC-01", "001560": "REC-01", "001565": "REC-01", "001566": "REC-01", "001578": "REC-02", "001585": "REC-02", "001587": "REC-01", "001589": "REC-01", "001593": "REC-04", "001654": "REC-01", "001692": "REC-04", "001694": "REC-07", "001695": "REC-07", "001696": "REC-12", "001717": "REC-05", "001718": "REC-01", "001719": "REC-04", "001722": "REC-04", "001723": "REC-04", "001753": "REC-09", "001755": "REC-05", "001756": "REC-06", "001757": "REC-06", "001759": "REC-06", "001760": "REC-05", "000009": "JPA-02", "000317": "JPA-02", "000331": "JPA-02", "000675": "JPA-05", "000692": "JPA-01", "000900": "JPA-02", "000963": "JPA-02", "001039": "JPA-02", "001080": "JPA-02", "001262": "JPA-01", "001320": "JPA-01", "001351": "JPA-01", "001357": "JPA-02", "001450": "JPA-03", "001537": "JPA-03", "001559": "JPA-01", "001569": "JPA-02", "001571": "JPA-01", "001606": "JPA-05", "001668": "JPA-01", "001677": "JPA-01", "001703": "JPA-01", "001704": "JPA-03", "001712": "JPA-01", "001731": "JPA-06", "001733": "JPA-04", "001734": "JPA-04", "000400": "JUA-01", "000667": "JUA-01", "000871": "JUA-01", "000873": "JUA-01", "001257": "JUA-01", "001673": "JUA-01", "001679": "JUA-01", "000897": "MCZ-01", "000912": "MCZ-01", "001075": "MCZ-01", "001114": "MCZ-02", "001514": "MCZ-01", "001629": "MCZ-01", "001647": "MCZ-01", "001650": "MCZ-01", "001706": "MCZ-01", "000443": "MOS-01", "000613": "MOS-01", "001689": "MOS-01", "000429": "NAT-01", "000485": "NAT-04", "000612": "NAT-01", "000624": "NAT-01", "000693": "NAT-05", "000765": "NAT-05", "000874": "NAT-01", "000896": "NAT-07", "000936": "NAT-01", "000980": "NAT-02", "001041": "NAT-04", "001115": "NAT-03", "001181": "NAT-01", "001208": "NAT-02", "001216": "NAT-03", "001273": "NAT-08", "001292": "NAT-02", "001422": "NAT-02", "001713": "NAT-06", "000030": "SLU-01", "000234": "SLU-01", "000720": "SLU-01", "000886": "SLU-01", "001007": "SLU-01", "001042": "SLU-01", "001076": "SLU-01", "001127": "SLU-01", "001204": "SLU-01", "001272": "SLU-01", "001294": "SLU-01", "001295": "SLU-01", "001347": "SLU-02", "001403": "SLU-02", "001420": "SLU-01", "001432": "SLU-01", "001438": "SLU-01", "001493": "SLU-01", "001517": "SLU-01", "001586": "SLU-01", "001612": "SLU-01", "001634": "SLU-01", "001637": "SLU-01", "001666": "SLU-01", "001670": "SLU-01", "001707": "SLU-01", "001708": "SLU-01", "001714": "SLU-01", "001715": "SLU-01", "001728": "SLU-01", "001754": "SLU-01", "000128": "SOB-01", "000816": "SOB-01", "001200": "SOB-01", "001325": "SOB-01", "001331": "SOB-01", "001524": "SOB-01", "001683": "SOB-01", "001697": "SOB-01", "001716": "SOB-01", "000066": "THE-02", "000134": "THE-02", "000414": "THE-02", "000470": "THE-02", "000513": "THE-05", "000702": "THE-02", "000841": "THE-02", "001069": "THE-02", "001283": "THE-02", "001326": "THE-02", "001388": "THE-02", "001427": "THE-01", "001446": "THE-03", "001509": "THE-01", "001539": "THE-01", "001575": "THE-01", "001599": "THE-01", "001631": "THE-01", "001639": "THE-04", "001648": "THE-01", "001667": "THE-01", "001669": "THE-01", "001684": "THE-01", "001685": "THE-03", "001686": "THE-04", "001698": "THE-03", "001699": "THE-03", "001700": "THE-02", "001742": "THE-01", "001743": "THE-01", "001744": "THE-01", "001751": "THE-01", "001758": "THE-01", "000089": "MTZ-01", "000108": "MTZ-01", "000129": "MTZ-11", "000353": "MTZ-01", "000561": "MTZ-05", "000603": "MTZ-03", "000607": "MTZ-01", "000660": "MTZ-07", "001025": "MTZ-01", "001048": "MTZ-01", "001141": "MTZ-01", "001145": "MTZ-02", "001175": "MTZ-04", "001211": "MTZ-08", "001215": "MTZ-01", "001230": "MTZ-01", "001234": "MTZ-04", "001282": "MTZ-12", "001332": "MTZ-01", "001349": "MTZ-01", "001364": "MTZ-01", "001366": "MTZ-01", "001374": "MTZ-01", "001386": "MTZ-01", "001426": "MTZ-01", "001448": "MTZ-09", "001466": "MTZ-01", "001505": "MTZ-10", "001538": "MTZ-01", "001544": "MTZ-01", "001570": "MTZ-01", "001649": "MTZ-01", "001701": "MTZ-06", "001705": "MTZ-02", "001730": "MTZ-13", "001746": "MTZ-03", "001748": "MTZ-14"};
+
+function jorHorarioTexto(j) {
+  return j.linhas.map(l => l.dias + ': ' + [l.e1 && l.s1 ? l.e1 + '–' + l.s1 : '', l.e2 && l.s2 ? l.e2 + '–' + l.s2 : '']
+    .filter(Boolean).join(' / ')).join(' · ');
+}
+function jorBuscar(filial, grupo) {
+  return (JORNADAS[filial] || []).find(j => j.grupo === grupo);
+}
+
+// ── Virada de turno noturno (v81) ──
+// Jornada que passa da meia-noite (ex.: REC-02 21:00–00:00 / 02:00–06:20):
+// retorna { inicio, fim } — 1ª e última batida da jornada — ou null.
+function jorNoturna(codigo) {
+  const f = FUNCIONARIOS.find(x => x.codigo === codigo);
+  const g = JORNADA_FUNC[codigo];
+  const j = f && g && jorBuscar(f.filial, g);
+  if (!j) return null;
+  for (const l of j.linhas) {
+    const t = [l.e1, l.s1, l.e2, l.s2].filter(Boolean);
+    if (t.some((x, i) => i && x < t[i - 1])) return { inicio: t[0], fim: t[t.length - 1] };
+  }
+  return null;
+}
+function addDiaISO(iso, n) {
+  const d = new Date(iso + 'T00:00:00');
+  d.setDate(d.getDate() + n);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+// Data de CALENDÁRIO de uma batida de um lançamento (a que vai pro AFDT).
+// - Lançamento feito pela aba Pendências (tem horario_previsto/data_ref): r.data já é a
+//   data de calendário (a pendência mostra a data prevista; "Dia seguinte" já foi aplicado).
+// - Lançamento feito pela aba Lançamento: r.data é a "data de referência" = DIA DO TURNO.
+//   Batida de madrugada de jornada noturna pertence ao dia seguinte. Sem jornada mapeada,
+//   mantém a regra antiga (saída menor que a entrada → dia seguinte).
+function dataRealBatida(r, hora, ehSaida) {
+  if (!r.data || !hora) return r.data;
+  if ('horario_previsto' in r || 'data_ref' in r) return r.data;
+  const n = jorNoturna(r.codigo);
+  if (n) {
+    // Madrugada: antes do início da jornada e até 3h depois do fim previsto
+    const [fh, fm] = n.fim.split(':').map(Number);
+    const limite = String(Math.min(23, fh + 3)).padStart(2, '0') + ':' + String(fm).padStart(2, '0');
+    if (hora < n.inicio && hora <= limite) return addDiaISO(r.data, 1);
+    return r.data;
+  }
+  if (ehSaida && r.entrada && hora < r.entrada) return addDiaISO(r.data, 1);
+  return r.data;
+}
+// ── Solicitação de mudança (v81 parte 2) ──
+// Grava em /solicitacoes_jornada/{id}. Nada é alterado no app: o robô envia
+// e-mail ao RH (email_enviado) e o RH altera no Fortes. Status: pendente → concluida.
+const JOR_NODE = 'solicitacoes_jornada';
+let jorFormCodigo = null;
+let jorEnviando = false;
+function jorEsc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function jorAbrirForm(codigo) {
+  const f = FUNCIONARIOS.find(x => x.codigo === codigo);
+  if (!f) return;
+  jorFormCodigo = codigo;
+  const atual = JORNADA_FUNC[codigo];
+  const opcoes = (JORNADAS[f.filial] || []).filter(j => j.grupo !== atual);
+  document.getElementById('jor-form-func').innerHTML = `<b>${jorEsc(f.nome)}</b> (${jorEsc(f.codigo)}) — ${jorEsc(f.setor)} · Jornada atual: <b>${jorEsc(atual || 'não mapeada')}</b>`;
+  document.getElementById('jor-form-nova').innerHTML = '<option value="">Selecione...</option>' +
+    opcoes.map(j => `<option value="${jorEsc(j.grupo)}">${jorEsc(j.grupo)} — ${jorEsc(jorHorarioTexto(j))}</option>`).join('');
+  const amanha = new Date(); amanha.setDate(amanha.getDate() + 1);
+  document.getElementById('jor-form-data').value = amanha.toISOString().split('T')[0];
+  document.getElementById('jor-form-motivo').value = '';
+  document.getElementById('jor-form-preview').textContent = '';
+  const card = document.getElementById('jor-form-card');
+  card.style.display = 'block';
+  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+function jorFecharForm() {
+  jorFormCodigo = null;
+  document.getElementById('jor-form-card').style.display = 'none';
+}
+function jorFormPreview() {
+  const f = FUNCIONARIOS.find(x => x.codigo === jorFormCodigo);
+  const j = f && jorBuscar(f.filial, document.getElementById('jor-form-nova').value);
+  document.getElementById('jor-form-preview').textContent = j
+    ? 'Nova: ' + jorHorarioTexto(j) + ' · ' + j.semana + '/semana' + (j.codigos.length ? ' · Cód. Fortes: ' + j.codigos.join(', ') : '')
+    : '';
+}
+async function jorEnviarSolicitacao() {
+  if (jorEnviando) return;
+  const f = FUNCIONARIOS.find(x => x.codigo === jorFormCodigo);
+  if (!f) return;
+  const nova = document.getElementById('jor-form-nova').value;
+  const dataIni = document.getElementById('jor-form-data').value;
+  const motivo = document.getElementById('jor-form-motivo').value.trim();
+  if (!nova) { showToast('Selecione a nova jornada.', 'error'); return; }
+  if (!dataIni) { showToast('Informe a data de início.', 'error'); return; }
+  if (!motivo) { showToast('Informe o motivo.', 'error'); return; }
+  const jA = jorBuscar(f.filial, JORNADA_FUNC[f.codigo]);
+  const jN = jorBuscar(f.filial, nova);
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2,5);
+  const sol = {
+    id, codigo: f.codigo, nome: f.nome, filial: f.filial, setor: f.setor || '', empresa: f.empresa || 'GBEX',
+    jornada_atual: JORNADA_FUNC[f.codigo] || '', jornada_atual_horario: jA ? jorHorarioTexto(jA) : '',
+    jornada_nova: nova, jornada_nova_horario: jorHorarioTexto(jN), jornada_nova_codigos: jN.codigos.join(', '),
+    data_inicio: dataIni, motivo,
+    solicitante: currentUser.nome, solicitante_cpf: currentUser.cpf,
+    criado_em: new Date().toISOString(), status: 'pendente', email_enviado: false
+  };
+  jorEnviando = true;
+  const btn = document.getElementById('jor-form-enviar'); btn.disabled = true;
+  try {
+    const res = await fetch(FB_URL + '/' + JOR_NODE + '/' + id + '.json', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sol)
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    showToast('✅ Solicitação enviada. O RH recebe por e-mail na próxima rodada do robô (11:30).', 'success');
+    jorFecharForm();
+    jorRenderSolicitacoes();
+  } catch (e) {
+    showToast('Erro ao enviar a solicitação — tente de novo. (' + e.message + ')', 'error');
+  } finally {
+    jorEnviando = false; btn.disabled = false;
+  }
+}
+async function jorRenderSolicitacoes() {
+  const el = document.getElementById('jor-solic');
+  let data;
+  try {
+    const res = await fetch(FB_URL + '/' + JOR_NODE + '.json');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    data = await res.json();
+  } catch (e) { el.innerHTML = '<span style="font-size:13px;color:var(--red)">Erro ao carregar solicitações.</span>'; return; }
+  const isAdmin = currentUser.filiais === null;
+  const lista = Object.values(data || {})
+    .filter(s => s && (isAdmin || s.solicitante_cpf === currentUser.cpf))
+    .sort((a, b) => ((a.status === 'pendente') === (b.status === 'pendente') ? 0 : a.status === 'pendente' ? -1 : 1)
+      || (b.criado_em || '').localeCompare(a.criado_em || ''));
+  if (!lista.length) { el.innerHTML = '<span style="font-size:13px;color:var(--text-dim)">Nenhuma solicitação ainda.</span>'; return; }
+  const st = s => s.status === 'concluida' ? '<span style="color:var(--green)">✓ Feito no Fortes</span>' +
+        (s.concluido_por ? '<br><span style="font-size:11px;color:var(--text-dim)">' + jorEsc(s.concluido_por) + '</span>' : '')
+    : s.status === 'cancelada' ? '<span style="color:var(--text-dim)">Cancelada</span>'
+    : s.email_enviado ? '<span style="color:var(--accent)">E-mail enviado ao RH</span>'
+    : '<span style="color:var(--yellow)">Aguardando envio</span>';
+  el.innerHTML = `<table class="val-table"><thead><tr><th>Data</th><th>Funcionário</th><th>De → Para</th><th>A partir de</th><th>Motivo</th>${isAdmin ? '<th>Solicitante</th>' : ''}<th>Status</th>${isAdmin ? '<th></th>' : ''}</tr></thead><tbody>` +
+    lista.map(s => `<tr><td style="font-size:12px">${jorEsc(fmtDataHora(s.criado_em))}</td>
+      <td>${jorEsc(s.nome)}<br><span style="font-size:11px;color:var(--text-dim)">${jorEsc(s.codigo)} · ${jorEsc((s.filial||'').replace('FILIAL - ',''))}</span></td>
+      <td><b>${jorEsc(s.jornada_atual || '—')}</b> → <b>${jorEsc(s.jornada_nova)}</b><br><span style="font-size:11px;color:var(--text-dim)">${jorEsc(s.jornada_nova_horario)}</span></td>
+      <td>${jorEsc(fmtData(s.data_inicio))}</td><td style="font-size:12px">${jorEsc(s.motivo)}</td>
+      ${isAdmin ? `<td style="font-size:12px">${jorEsc(s.solicitante)}</td>` : ''}<td style="font-size:12px">${st(s)}</td>
+      ${isAdmin ? `<td style="white-space:nowrap">${s.status === 'pendente' ? `
+        <button class="btn-ghost" style="font-size:12px" onclick="jorAdminAcao('${jorEsc(s.id)}','concluir')">✓ Feito no Fortes</button>
+        ${s.email_enviado ? `<button class="btn-ghost" style="font-size:12px" title="Envia o e-mail de novo na próxima rodada do robô" onclick="jorAdminAcao('${jorEsc(s.id)}','reenviar')">Reenviar e-mail</button>` : ''}
+        <button class="btn-ghost" style="font-size:12px" onclick="jorAdminAcao('${jorEsc(s.id)}','cancelar')">Cancelar</button>` : ''}</td>` : ''}</tr>`).join('') + '</tbody></table>';
+}
+
+// Ações de gestão das solicitações — somente admin (a checagem fica aqui também,
+// não só no botão, para não depender do que está renderizado na tela).
+async function jorAdminAcao(id, acao) {
+  if (currentUser.filiais !== null) return;
+  const msgs = { concluir: 'Confirmar que a jornada já foi alterada no Fortes?', cancelar: 'Cancelar esta solicitação?', reenviar: 'Reenviar o e-mail ao RH na próxima rodada do robô (11:30)?' };
+  if (!confirm(msgs[acao])) return;
+  const agora = new Date().toISOString();
+  const patch = acao === 'concluir' ? { status: 'concluida', concluido_por: currentUser.nome, concluido_em: agora }
+    : acao === 'cancelar' ? { status: 'cancelada', cancelado_por: currentUser.nome, cancelado_em: agora }
+    : { email_enviado: false };
+  try {
+    const res = await fetch(FB_URL + '/' + JOR_NODE + '/' + id + '.json', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch)
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    showToast('✅ Solicitação atualizada.', 'success');
+  } catch (e) {
+    showToast('Erro ao atualizar a solicitação (' + e.message + ').', 'error');
+  }
+  jorRenderSolicitacoes();
+}
+
+// Busca enquanto digita: espera o usuário parar de digitar antes de redesenhar
+const _debounceTimers = new Map();
+function debounceRender(fn, ms = 300) {
+  clearTimeout(_debounceTimers.get(fn));
+  _debounceTimers.set(fn, setTimeout(fn, ms));
+}
+
+function initJornadas() {
+  const sel = document.getElementById('jor-filial');
+  const nf = s => (s||'').toUpperCase().replace('FILIAL - ','').trim();
+  const filiais = Object.keys(JORNADAS).filter(f => !currentUser.filiais || currentUser.filiais.some(u => nf(u) === nf(f))).sort();
+  const atual = sel.value;
+  sel.innerHTML = filiais.length
+    ? filiais.map(f => `<option value="${f}">${f.replace('FILIAL - ','')}</option>`).join('')
+    : '<option value="">(sem jornadas mapeadas)</option>';
+  if (filiais.includes(atual)) sel.value = atual;
+  jorFecharForm();
+  renderJornadas();
+  jorRenderSolicitacoes();
+}
+function renderJornadas() {
+  const filial = document.getElementById('jor-filial').value;
+  const lista = JORNADAS[filial] || [];
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  document.getElementById('jor-lista').innerHTML = lista.length ? `<table class="val-table"><thead><tr>
+      <th>Jornada</th><th>Cód. Fortes</th><th>Dias</th><th>Entrada</th><th>Saída int.</th><th>Retorno</th><th>Saída</th><th>Horas/dia</th><th>Semana</th></tr></thead><tbody>` +
+    lista.map(j => j.linhas.map((l, i) => `<tr>
+      ${i === 0 ? `<td rowspan="${j.linhas.length}"><b>${esc(j.grupo)}</b>${j.escala !== 'Semanal' ? '<br><span style="font-size:11px;color:var(--text-dim)">' + esc(j.escala) + '</span>' : ''}</td>
+      <td rowspan="${j.linhas.length}" style="font-size:12px">${esc(j.codigos.join(', ')) || '—'}</td>` : ''}
+      <td>${esc(l.dias)}</td><td>${esc(l.e1)||'—'}</td><td>${esc(l.s1)||'—'}</td><td>${esc(l.e2)||'—'}</td><td>${esc(l.s2)||'—'}</td><td>${esc(l.hdia)}</td>
+      ${i === 0 ? `<td rowspan="${j.linhas.length}">${esc(j.semana)}</td>` : ''}</tr>`).join('')).join('') + '</tbody></table>'
+    : '<span style="font-size:13px;color:var(--text-dim)">Nenhuma jornada mapeada para esta filial.</span>';
+
+  const busca = (document.getElementById('jor-busca').value || '').toUpperCase().trim();
+  const funcs = getFuncionariosPermitidos()
+    .filter(f => f.filial === filial)
+    .filter(f => !busca || f.nome.toUpperCase().includes(busca) || f.codigo.includes(busca))
+    .sort((a, b) => a.nome.localeCompare(b.nome));
+  document.getElementById('jor-func').innerHTML = funcs.length ? `<table class="val-table"><thead><tr>
+      <th>Código</th><th>Nome</th><th>Setor</th><th>Jornada atual</th><th>Horário</th><th></th></tr></thead><tbody>` +
+    funcs.map(f => {
+      const g = JORNADA_FUNC[f.codigo];
+      const j = g && jorBuscar(filial, g);
+      return `<tr><td>${esc(f.codigo)}</td><td>${esc(f.nome)}</td><td>${esc(f.setor)}</td>
+        <td>${g ? '<b>' + esc(g) + '</b>' : '<span style="color:var(--text-dim)">não mapeada</span>'}</td>
+        <td style="font-size:12px">${j ? esc(jorHorarioTexto(j)) : '—'}</td>
+        <td>${lista.length ? `<button class="btn-ghost" style="font-size:12px;white-space:nowrap" onclick="jorAbrirForm('${esc(f.codigo)}')">Solicitar mudança</button>` : ''}</td></tr>`;
+    }).join('') + '</tbody></table>'
+    : '<span style="font-size:13px;color:var(--text-dim)">Nenhum funcionário seu nesta filial' + (currentEmpresa !== 'GBEX' ? ' (jornadas mapeadas só para GBEX — troque a empresa no topo)' : '') + '.</span>';
 }
 
 // ─────────────────────────────────────────────
