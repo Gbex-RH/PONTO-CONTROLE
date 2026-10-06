@@ -528,6 +528,7 @@
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
 </head>
 <body>
 
@@ -573,7 +574,7 @@
         <button class="empresa-btn gblog" id="btn-gblog" onclick="setEmpresa('GBLOG')">GBLOG</button>
       </div>
       <span class="topbar-user">Olá, <strong id="topbar-nome">—</strong></span>
-      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v84</span>
+      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v85</span>
       <button class="btn-ghost" onclick="trocarMinhaSenha()" title="Trocar minha senha">🔑</button>
       <button class="btn-ghost" onclick="doLogout()">Sair</button>
     </div>
@@ -1099,11 +1100,13 @@
   <!-- ─── TAB: CADASTROS (somente admin) ─── -->
   <div class="tab-content" id="tab-cadastros">
     <div class="main">
-      <div class="card" id="cad-migrar-card" style="display:none;margin-bottom:20px;border:1px solid var(--yellow)">
-        <div class="card-title"><span class="dot"></span> Migração inicial dos logins</div>
-        <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Os logins ainda estão só dentro do código do site. Clique para copiá-los para o banco (feito uma única vez). Nada muda para os usuários.</div>
-        <button class="btn-afdt" onclick="cadMigrar()">Migrar cadastros</button>
+      <div style="display:flex;gap:8px;margin-bottom:18px">
+        <button class="subnav-btn active" id="cad-sub-logins" onclick="cadSub('logins')">🔐 Logins</button>
+        <button class="subnav-btn" id="cad-sub-funcs" onclick="cadSub('funcs')">👤 Funcionários</button>
+        <button class="subnav-btn" id="cad-sub-ho" onclick="cadSub('ho')">🏠 Home office</button>
+        <button class="subnav-btn" id="cad-sub-bk" onclick="cadSub('bk')">🗓️ Jornadas e PIS (backup)</button>
       </div>
+      <div id="cad-pane-logins">
       <div class="card" id="cad-form-card" style="display:none;margin-bottom:20px;border:1px solid var(--accent)">
         <div class="card-title"><span class="dot"></span> <span id="cad-form-titulo">Novo login</span></div>
         <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end">
@@ -1138,6 +1141,72 @@
           <button class="btn-afdt" style="margin-left:auto" onclick="cadAbrirForm(null)">+ Novo login</button></div>
         <input type="text" id="cad-busca" placeholder="Buscar nome ou CPF..." oninput="debounceRender(cadRender)" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none;width:220px;margin-bottom:12px">
         <div class="val-table-wrap" id="cad-lista"><span style="font-size:13px;color:var(--text-dim)">Carregando...</span></div>
+      </div>
+      </div>
+
+      <div id="cad-pane-funcs" style="display:none">
+        <div class="card" id="fc-form-card" style="display:none;margin-bottom:20px;border:1px solid var(--accent)">
+          <div class="card-title"><span class="dot"></span> <span id="fc-form-titulo">Novo funcionário</span></div>
+          <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end">
+            <div><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Empresa</label><select id="fc-empresa" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none"><option>GBEX</option><option>GBLOG</option></select></div>
+            <div><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Código (matrícula)</label><input id="fc-codigo" maxlength="6" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none;width:110px" placeholder="001800"></div>
+            <div style="flex:1;min-width:240px"><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Nome completo</label><input id="fc-nome" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none;width:100%"></div>
+            <div><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Filial</label><select id="fc-filial" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none"></select></div>
+            <div><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Setor</label><input id="fc-setor" list="fc-setores" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none;width:150px"><datalist id="fc-setores"></datalist></div>
+            <div><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Cargo</label><input id="fc-cargo" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none;width:180px"></div>
+            <div><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">PIS</label><input id="fc-pis" maxlength="11" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none;width:130px"></div>
+            <div><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Admissão</label><input type="date" id="fc-admissao" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none"></div>
+          </div>
+          <div style="display:flex;gap:10px;margin-top:16px;align-items:center">
+            <button class="btn-afdt" id="fc-salvar" onclick="fcSalvar()">Salvar</button>
+            <button class="btn-ghost" onclick="fcFecharForm()">Cancelar</button>
+            <label style="margin-left:auto;font-size:13px;display:flex;gap:6px;align-items:center"><input type="checkbox" id="fc-ativo" checked> Ativo (desmarque para desligado)</label>
+          </div>
+        </div>
+        <div class="card" style="margin-bottom:20px">
+          <div class="card-title"><span class="dot"></span> Importar planilha de funcionários</div>
+          <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Colunas: <b>Empresa, Código, Nome, Filial, Setor, Cargo, PIS, Admissão</b>. Código já existente = atualiza os dados; código novo = cadastra. Células vazias não apagam o que já existe.</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+            <button class="btn-ghost" onclick="fcBaixarModelo()">⬇ Baixar modelo</button>
+            <input type="file" id="fc-arquivo" accept=".xlsx,.xls,.csv" onchange="fcImportarAnalisar()" style="font-size:13px">
+          </div>
+          <div id="fc-import-preview" style="margin-top:12px;font-size:13px"></div>
+        </div>
+        <div class="card">
+          <div class="card-title" style="display:flex;align-items:center"><span class="dot"></span>&nbsp;Funcionários
+            <button class="btn-afdt" style="margin-left:auto" onclick="fcAbrirForm(null)">+ Novo funcionário</button></div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+            <input type="text" id="fc-busca" placeholder="Buscar nome ou código..." oninput="debounceRender(fcRender)" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none;width:220px">
+            <select id="fc-filtro" onchange="fcRender()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none"><option value="">Todos</option><option value="app">Novos/editados pelo app</option><option value="sempis">Sem PIS</option><option value="semfilial">Sem filial</option></select>
+          </div>
+          <div class="val-table-wrap" id="fc-lista"></div>
+        </div>
+      </div>
+
+      <div id="cad-pane-bk" style="display:none">
+        <div class="card">
+          <div class="card-title"><span class="dot"></span> Atualizar jornadas e PIS pelo backup do Fortes Ponto</div>
+          <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;line-height:1.6">
+            Envie o arquivo de backup do Fortes Ponto (<b>.zip</b> ou <b>.bt</b>) — um de cada empresa (GBEX e GBLOG), um por vez.
+            O app lê os horários, a jornada atual de cada funcionário e o PIS. Nada é gravado antes da sua confirmação.<br>
+            <span id="bk-ultima" style="color:var(--text-dim)"></span>
+          </div>
+          <input type="file" id="bk-arquivo" accept=".zip,.bt" onchange="bkAnalisar()" style="font-size:13px">
+          <div id="bk-preview" style="margin-top:14px;font-size:13px"></div>
+        </div>
+      </div>
+
+      <div id="cad-pane-ho" style="display:none">
+        <div class="card">
+          <div class="card-title"><span class="dot"></span> Funcionários em home office</div>
+          <div id="ho-cad-aviso" style="font-size:13px;color:var(--text-muted);margin-bottom:12px"></div>
+          <div class="val-table-wrap" id="ho-cad-lista"></div>
+          <div style="display:flex;gap:10px;align-items:flex-end;margin-top:16px;flex-wrap:wrap">
+            <div><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Incluir funcionário (código)</label><input id="ho-cad-codigo" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none;width:170px" placeholder="001112 ou GBLOG_000001"></div>
+            <button class="btn-afdt" onclick="hoCadIncluir()">+ Incluir no home office</button>
+          </div>
+          <div style="font-size:12px;color:var(--text-dim);margin-top:10px">Para bater ponto pelo app, o funcionário também precisa de um login com perfil <b>Home office</b> (aba Logins).</div>
+        </div>
       </div>
     </div>
   </div>
@@ -1272,6 +1341,63 @@ FUNCIONARIOS.forEach(f => {
   if (semZeros && !FUNC_INDEX[semZeros]) FUNC_INDEX[semZeros] = f;
 });
 
+// ── Cadastros mantidos pelo app (v85) ──
+// /funcionarios/{codigo}: funcionário novo ou correção de um existente (filial, setor, PIS...).
+// Aplicado por cima de FUNCIONARIOS_RAW no login; ativo:false tira o funcionário da lista.
+// /home_office/{codigo}: lista de home office — quando existe, substitui HO_FUNCIONARIOS.
+let FUNC_BANCO = {};
+let HO_BANCO = null;
+const FUNC_BASE = {};  // cópia do cadastro original (para mostrar o que foi alterado)
+FUNCIONARIOS_RAW.forEach(f => { FUNC_BASE[f.codigo] = { ...f }; });
+function indexarFunc(f) {
+  const k = String(f.codigo).trim();
+  FUNC_INDEX[k] = f;
+  const semZeros = k.replace(/^0+/, '');
+  if (semZeros && (!FUNC_INDEX[semZeros] || FUNC_INDEX[semZeros].codigo === f.codigo)) FUNC_INDEX[semZeros] = f;
+}
+// /jornadas/{GBEX|GBLOG}: { J: {filial: [jornada...]}, F: {codigo: grupo}, atualizado_em, atualizado_por, arquivo }
+// Gerado na aba Cadastros a partir do backup do Fortes. Substitui, só para aquela empresa,
+// os dados embutidos no código (JORNADAS / JORNADA_FUNC).
+let JOR_BANCO = null;
+function aplicarJornadasBanco(d) {
+  JOR_BANCO = d || null;
+  if (!d) return;
+  Object.entries(d).forEach(([emp, v]) => {
+    if (!v || !v.J) return;
+    Object.keys(JORNADAS).forEach(fil => { JORNADAS[fil] = JORNADAS[fil].filter(j => (j.empresa || 'GBEX') !== emp); if (!JORNADAS[fil].length) delete JORNADAS[fil]; });
+    Object.entries(v.J).forEach(([fil, lista]) => { JORNADAS[fil] = (JORNADAS[fil] || []).concat(lista); });
+    Object.keys(JORNADA_FUNC).forEach(c => { if ((c.startsWith('GBLOG_') ? 'GBLOG' : 'GBEX') === emp) delete JORNADA_FUNC[c]; });
+    Object.assign(JORNADA_FUNC, v.F || {});
+  });
+}
+function aplicarFuncionarioBanco(cod, v) {
+  const i = FUNCIONARIOS.findIndex(f => f.codigo === cod);
+  if (v.ativo === false) {
+    if (i >= 0) FUNCIONARIOS.splice(i, 1);
+    delete FUNC_INDEX[cod];
+    return;
+  }
+  const campos = {};
+  ['nome','empresa','filial','setor','cargo','pis','admissao'].forEach(c => { if (v[c]) campos[c] = v[c]; });
+  if (i >= 0) Object.assign(FUNCIONARIOS[i], campos);
+  else FUNCIONARIOS.push({ codigo: cod, empresa: cod.startsWith('GBLOG_') ? 'GBLOG' : 'GBEX', ...campos });
+  indexarFunc(FUNCIONARIOS[i >= 0 ? i : FUNCIONARIOS.length - 1]);
+}
+async function carregarCadastrosApp() {
+  try {
+    const [rf, rh] = await Promise.all([fetch(FB_URL + '/funcionarios.json'), fetch(FB_URL + '/home_office.json')]);
+    FUNC_BANCO = (rf.ok && await rf.json()) || {};
+    Object.entries(FUNC_BANCO).forEach(([cod, v]) => { if (v) aplicarFuncionarioBanco(cod, v); });
+    try { aplicarJornadasBanco(await (await fetch(FB_URL + '/jornadas.json')).json()); } catch (e) { console.warn('jornadas do banco:', e); }
+    const ho = rh.ok ? await rh.json() : null;
+    HO_BANCO = ho && Object.keys(ho).length ? ho : null;
+    if (HO_BANCO) {
+      HO_FUNCIONARIOS.length = 0;
+      Object.entries(HO_BANCO).forEach(([cod, v]) => HO_FUNCIONARIOS.push({ codigo: cod, nome: v.nome, empresa: v.empresa || 'GBEX' }));
+    }
+  } catch (e) { console.warn('Erro ao carregar cadastros do banco:', e); }
+}
+
 // Filiais atribuídas manualmente pelo admin (funcionário novo/sem filial no cadastro
 // estático) — carregado do Firebase em carregarPendencias(). Ver atribuirFilialOrfao().
 let FUNC_EXTRA = {};
@@ -1294,11 +1420,7 @@ function buscarFunc(codigo, empresa) {
 
 // Usuários DP com acesso total (filiais null)
 
-// dados de acesso
-const _D = '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';
-const _K = 'gbex2026ponto';
-function _dec(s,k){const b=atob(s);let r='';for(let i=0;i<b.length;i++)r+=String.fromCharCode(b.charCodeAt(i)^k.charCodeAt(i%k.length));return r;}
-const USUARIOS = JSON.parse(_dec(_D,_K));
+// Logins: desde a v85 vivem só no banco (/usuarios) — a lista embutida (_D) foi removida.
 // ─────────────────────────────────────────────
 //  STATE
 // ─────────────────────────────────────────────
@@ -1463,14 +1585,12 @@ async function carregarCadastroUsuario(cpf) {
     const res = await fetch(FB_URL + '/usuarios/' + cpf + '.json');
     if (res.ok) { const r = await res.json(); if (r) return usuarioDoBanco(r); }
   } catch (e) { console.warn('Erro ao ler cadastro:', e); }
-  const u = USUARIOS[cpf];
-  if (!u) return null;
-  const { senha, ...semSenha } = u;
-  return semSenha;
+  return null;
 }
 async function entrarComo(cpf, pass) {
   const auth = await fbAuthEntrar(cpf, pass);
   if (!auth) return { erro: 'Usuário ou senha incorretos.' };
+  await carregarCadastrosApp();
   const u = await carregarCadastroUsuario(cpf);
   if (!u) { fbAuthSair(); return { erro: 'Login sem cadastro no app. Fale com o Setor Pessoal.' }; }
   if (u.ativo === false) { fbAuthSair(); return { erro: 'Acesso desativado. Fale com o Setor Pessoal.' }; }
@@ -4065,7 +4185,6 @@ function renderJornadas() {
 //                    bloqueados, permitidos, ativo, uid }   (sem senha — senha é do Firebase Auth)
 //  /admins/{uid}: true   ← usado pelas regras do banco para liberar escrita de cadastros
 // ─────────────────────────────────────────────
-const CAD_UID_INICIAL = {"00723054363": "whnTGDKh3GadTdWfBEAODFuTlMK2", "65769759372": "Nfjjr3lHblXPdgy5JyjpPLrSKdJ3", "65837614320": "z0t071WZlWWblRESYF8kWcui6yi1", "08496320308": "4JSU79NlHZdOHlhHDdv5r6gLUL03", "06166460384": "z22pdwlogqWp33tYrdiarpuY8A92", "06095936330": "ZaoaABRAdcPyRIJw3HkbFsB0ToT2", "00156829355": "3WhzaJ9fmSZrs8wbQkvI18xDUir2", "06965408359": "5uDYsbR9FXhvyCUOorEpA4wdH6s2", "05972530481": "sZ0dKoatJSMgKFhJA5xSsqsuzVN2", "85113522368": "9rJRHLD6XiZ5CmbMM9op6MLSE632", "95041923353": "omhkx1ffDbPa8tfh5PZvyN9V6Ax2", "98996649368": "DNYqPNeocRcxQH0EXhNuZ3bOjbO2", "04708060440": "awdkY79BXlPRi6UgUxLlrlbcDSG2", "08996177431": "S3vwoLrjubWL2l7yA1ZDM8wufO43", "02230548441": "Okn6ITLlWnWQy5wezn5aJVZ6Yof2", "74939165353": "J1xuson90GYE5efVoopOTKm3X2m1", "56513178304": "nN6DrxX54xY4MZsttame6DLcxAZ2", "05980791493": "ikBWoDUTAYcr1cpJdsnXeenG4Tl2", "03528076445": "4qhKXV9pWPhWaJ80OG9kx9LoqCk1", "73175188320": "CMx7WOabibQ58rrravjU6doxdFi1", "00858282380": "UxeftCdmI8ThQjseEKSoGNrDk3t1", "02148965441": "NYz5kfPbVMdSd2ZhbUooc8AVNio2", "02407524497": "pmveOSysthMwdxjFXKLkaGY052t1", "46198512304": "Kbrjg2AUtuO4wUUPNtXUn05QBRs2", "98892584391": "12JCYMbOdIRiUwP4ePQoQEnvG3V2", "00745746390": "hIykZ7J8x2QhdmNBVWYtR6S1oiA2", "12160689416": "LCg843ZZgZgkxfNnD8np1qpXdbO2", "10517264412": "XYG4IV28xlNtk4JOq4Ie1zxkWMz2", "71272528405": "d3E0m8Q7aPdvIjhEUQedGD3hedN2", "82930317353": "kFK5DoZRrShDdqSUex3rMocNhO73", "01233973320": "xs3rK1uu8Xe8VyztiFa5N8Jkjs12", "82411220391": "rhRMOEohRkdg3xNMWIXCKuIeW9n1", "16763258402": "y1edy48wa6UkN3FTxDQV7ECAGZW2"};  // CPF → UID das contas criadas em 05/10/2026
 let cadUsuarios = {};
 let cadEditando = null;
 const cadEsc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -4078,7 +4197,6 @@ async function cadCarregar() {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     cadUsuarios = (await res.json()) || {};
   } catch (e) { el.innerHTML = '<span style="color:var(--red)">Erro ao carregar logins: ' + cadEsc(e.message) + '</span>'; return; }
-  document.getElementById('cad-migrar-card').style.display = Object.keys(cadUsuarios).length ? 'none' : 'block';
   cadRender();
 }
 function cadRender() {
@@ -4087,7 +4205,7 @@ function cadRender() {
   const lista = Object.entries(cadUsuarios)
     .filter(([cpf, u]) => !busca || cpf.includes(busca) || (u.nome || '').toUpperCase().includes(busca))
     .sort((a, b) => (a[1].nome || '').localeCompare(b[1].nome || ''));
-  if (!lista.length) { el.innerHTML = '<span style="font-size:13px;color:var(--text-dim)">' + (Object.keys(cadUsuarios).length ? 'Nenhum login encontrado.' : 'Nenhum login no banco ainda — faça a migração acima.') + '</span>'; return; }
+  if (!lista.length) { el.innerHTML = '<span style="font-size:13px;color:var(--text-dim)">' + (Object.keys(cadUsuarios).length ? 'Nenhum login encontrado.' : 'Nenhum login cadastrado.') + '</span>'; return; }
   const perfil = u => u.admin ? '<b style="color:var(--accent)">Admin</b>' : u.perfil === 'empregado' ? 'Home office' : 'Gestor';
   const acesso = u => u.admin ? 'Todas as filiais' : u.perfil === 'empregado' ? (u.codigo || '—')
     : ((u.filiais || []).map(f => f.replace('FILIAL - ', '')).join(', ') || '—') + ((u.setores || []).length ? '<br><span style="font-size:11px;color:var(--text-dim)">' + u.setores.join(', ') + '</span>' : '');
@@ -4188,31 +4306,344 @@ async function cadSalvar() {
     showToast('Erro ao salvar: ' + e.message, 'error');
   } finally { btn.disabled = false; }
 }
-// Copia os logins embutidos (_D) para /usuarios e /admins — uma única vez
-async function cadMigrar() {
-  if (!cadEhAdmin()) return;
-  if (!confirm('Copiar os ' + Object.keys(USUARIOS).length + ' logins atuais para o banco?')) return;
-  let ok = 0; const erros = [];
-  for (const [cpf, x] of Object.entries(USUARIOS)) {
-    const u = { nome: x.nome, nomeC: x.nomeC || '', admin: x.filiais === null, ativo: true,
-      uid: CAD_UID_INICIAL[cpf] || '', migrado_em: new Date().toISOString() };
-    if (x.filiais) u.filiais = x.filiais;
-    if (x.setores && x.setores.length) u.setores = x.setores;
-    if (x.bloqueados && x.bloqueados.length) u.bloqueados = x.bloqueados;
-    if (x.permitidos) u.permitidos = x.permitidos;
-    if (x.perfil) u.perfil = x.perfil;
-    if (x.codigo) u.codigo = x.codigo;
-    if (x.empresa) u.empresa = x.empresa;
-    try {
-      await cadPut('usuarios/' + cpf, u);
-      if (u.admin && u.uid) await cadPut('admins/' + u.uid, true);
-      ok++;
-    } catch (e) { erros.push(x.nome + ': ' + e.message); }
-  }
-  showToast('Migração: ' + ok + ' login(s) copiados' + (erros.length ? ' — ' + erros.length + ' erro(s), veja o console.' : '.'), erros.length ? 'error' : 'success');
-  if (erros.length) console.warn(erros);
-  cadCarregar();
+// ── Sub-abas ──
+function cadSub(s) {
+  ['logins','funcs','ho','bk'].forEach(x => {
+    document.getElementById('cad-pane-' + x).style.display = x === s ? '' : 'none';
+    document.getElementById('cad-sub-' + x).classList.toggle('active', x === s);
+  });
+  if (s === 'funcs') fcRender();
+  if (s === 'ho') hoCadRender();
+  if (s === 'bk') bkInfo();
 }
+
+// ─────────────────────────────────────────────
+//  CADASTROS — FUNCIONÁRIOS (v85)
+// ─────────────────────────────────────────────
+const FC_FILIAIS = () => [...new Set(FUNCIONARIOS.map(f => f.filial).concat(Object.keys(JORNADAS)).filter(Boolean))].sort();
+function fcNormFilial(s) {
+  const n = String(s || '').toUpperCase().replace('FILIAL - ', '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  if (!n) return '';
+  return FC_FILIAIS().find(f => f.replace('FILIAL - ', '') === n) || null;
+}
+function fcCodigoApp(empresa, cod) {
+  let c = String(cod || '').replace(/^GBLOG_/i, '').replace(/\D/g, '');
+  if (!c) return '';
+  c = c.padStart(6, '0');
+  return (String(empresa).toUpperCase() === 'GBLOG' ? 'GBLOG_' : '') + c;
+}
+function fcRender() {
+  const busca = (document.getElementById('fc-busca').value || '').toUpperCase().trim();
+  const filtro = document.getElementById('fc-filtro').value;
+  let lista = FUNCIONARIOS.slice();
+  // Desligados pelo app também aparecem (para poder reativar)
+  Object.entries(FUNC_BANCO).forEach(([cod, v]) => { if (v && v.ativo === false) lista.push({ ...(FUNC_BASE[cod] || {}), ...v, codigo: cod, _desligado: true }); });
+  if (busca) lista = lista.filter(f => f.codigo.includes(busca) || (f.nome || '').toUpperCase().includes(busca));
+  if (filtro === 'app') lista = lista.filter(f => FUNC_BANCO[f.codigo]);
+  if (filtro === 'sempis') lista = lista.filter(f => !f.pis && !f._desligado);
+  if (filtro === 'semfilial') lista = lista.filter(f => !f.filial && !f._desligado);
+  lista.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+  const total = lista.length; lista = lista.slice(0, 200);
+  const origem = f => f._desligado ? '<span style="color:var(--red)">Desligado</span>' : FUNC_BANCO[f.codigo] ? (FUNC_BASE[f.codigo] ? '<span style="color:var(--yellow)">Editado</span>' : '<span style="color:var(--green)">Novo</span>') : '';
+  document.getElementById('fc-lista').innerHTML = total ? '<table class="val-table"><thead><tr><th>Código</th><th>Nome</th><th>Empresa</th><th>Filial</th><th>Setor</th><th>PIS</th><th></th><th></th></tr></thead><tbody>' +
+    lista.map(f => '<tr style="' + (f._desligado ? 'opacity:.5' : '') + '"><td style="font-family:monospace">' + cadEsc(f.codigo) + '</td><td>' + cadEsc(f.nome) + '</td><td>' + cadEsc(f.empresa || 'GBEX') + '</td><td>' + cadEsc((f.filial || '—').replace('FILIAL - ', '')) + '</td><td>' + cadEsc(f.setor || '—') + '</td><td style="font-family:monospace">' + (f.pis ? cadEsc(f.pis) : '<span style="color:var(--yellow)">sem PIS</span>') + '</td><td style="font-size:12px">' + origem(f) + '</td>' +
+      '<td><button class="btn-ghost" style="font-size:12px" onclick="fcAbrirForm(\'' + cadEsc(f.codigo) + '\')">Editar</button></td></tr>').join('') + '</tbody></table>' +
+      (total > 200 ? '<div style="font-size:12px;color:var(--text-dim);margin-top:8px">Mostrando 200 de ' + total + ' — use a busca.</div>' : '')
+    : '<span style="font-size:13px;color:var(--text-dim)">Nenhum funcionário encontrado.</span>';
+}
+let fcEditando = null;
+function fcAbrirForm(cod) {
+  fcEditando = cod;
+  const f = cod ? (FUNCIONARIOS.find(x => x.codigo === cod) || { ...(FUNC_BASE[cod] || {}), ...(FUNC_BANCO[cod] || {}), codigo: cod }) : {};
+  document.getElementById('fc-form-titulo').textContent = cod ? 'Editar — ' + (f.nome || cod) : 'Novo funcionário';
+  document.getElementById('fc-empresa').value = f.empresa || (cod && cod.startsWith('GBLOG_') ? 'GBLOG' : 'GBEX');
+  document.getElementById('fc-empresa').disabled = !!cod;
+  const ce = document.getElementById('fc-codigo'); ce.value = cod ? cod.replace('GBLOG_', '') : ''; ce.disabled = !!cod;
+  document.getElementById('fc-nome').value = f.nome || '';
+  document.getElementById('fc-filial').innerHTML = '<option value="">—</option>' + FC_FILIAIS().map(x => '<option value="' + cadEsc(x) + '">' + cadEsc(x.replace('FILIAL - ', '')) + '</option>').join('');
+  document.getElementById('fc-filial').value = f.filial || '';
+  document.getElementById('fc-setores').innerHTML = [...new Set(FUNCIONARIOS.map(x => x.setor).filter(Boolean))].sort().map(s => '<option value="' + cadEsc(s) + '">').join('');
+  document.getElementById('fc-setor').value = f.setor || '';
+  document.getElementById('fc-cargo').value = f.cargo || '';
+  document.getElementById('fc-pis').value = f.pis || '';
+  document.getElementById('fc-admissao').value = f.admissao || '';
+  document.getElementById('fc-ativo').checked = !(FUNC_BANCO[cod] && FUNC_BANCO[cod].ativo === false);
+  const card = document.getElementById('fc-form-card'); card.style.display = 'block';
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function fcFecharForm() { fcEditando = null; document.getElementById('fc-form-card').style.display = 'none'; }
+// Valida e monta o registro de /funcionarios; devolve { cod, reg } ou { erro }
+function fcMontar(d) {
+  const cod = fcCodigoApp(d.empresa, d.codigo);
+  if (!cod) return { erro: 'código vazio' };
+  const nome = String(d.nome || '').trim().toUpperCase();
+  const existe = FUNC_BASE[cod] || FUNC_BANCO[cod] || FUNCIONARIOS.find(f => f.codigo === cod);
+  if (!nome && !existe) return { cod, erro: 'nome vazio' };
+  const reg = {};
+  if (nome) reg.nome = nome;
+  if (d.filial) { const fl = fcNormFilial(d.filial); if (fl === null) return { cod, erro: 'filial "' + d.filial + '" não reconhecida' }; if (fl) reg.filial = fl; }
+  if (!reg.filial && !existe) return { cod, erro: 'filial vazia' };
+  if (d.setor) reg.setor = String(d.setor).trim().toUpperCase();
+  if (d.cargo) reg.cargo = String(d.cargo).trim().toUpperCase();
+  if (d.pis) { const p = String(d.pis).replace(/\D/g, ''); if (p.length !== 11) return { cod, erro: 'PIS "' + d.pis + '" não tem 11 dígitos' }; reg.pis = p; }
+  if (d.admissao) reg.admissao = d.admissao;
+  reg.empresa = cod.startsWith('GBLOG_') ? 'GBLOG' : 'GBEX';
+  return { cod, reg };
+}
+async function fcGravar(cod, reg) {
+  const atual = FUNC_BANCO[cod] || {};
+  const novo = { ...atual, ...reg, atualizado_por: currentUser.nome, atualizado_em: new Date().toISOString() };
+  await cadPut('funcionarios/' + cod, novo);
+  FUNC_BANCO[cod] = novo;
+  aplicarFuncionarioBanco(cod, novo);
+}
+async function fcSalvar() {
+  if (!cadEhAdmin()) return;
+  const d = { empresa: document.getElementById('fc-empresa').value, codigo: fcEditando || document.getElementById('fc-codigo').value,
+    nome: document.getElementById('fc-nome').value, filial: document.getElementById('fc-filial').value, setor: document.getElementById('fc-setor').value,
+    cargo: document.getElementById('fc-cargo').value, pis: document.getElementById('fc-pis').value, admissao: document.getElementById('fc-admissao').value };
+  const m = fcMontar(d);
+  if (m.erro) { showToast('Não foi possível salvar: ' + m.erro + '.', 'error'); return; }
+  if (!fcEditando && (FUNC_BASE[m.cod] || FUNC_BANCO[m.cod])) { showToast('Já existe funcionário com o código ' + m.cod + ' — use Editar.', 'error'); return; }
+  m.reg.ativo = document.getElementById('fc-ativo').checked;
+  try {
+    await fcGravar(m.cod, m.reg);
+    showToast('✅ Funcionário salvo.', 'success'); fcFecharForm(); fcRender();
+  } catch (e) { showToast('Erro ao salvar: ' + e.message, 'error'); }
+}
+function fcBaixarModelo() {
+  const ws = XLSX.utils.aoa_to_sheet([['Empresa','Código','Nome','Filial','Setor','Cargo','PIS','Admissão'],
+    ['GBEX','001800','NOME COMPLETO DO FUNCIONARIO','RECIFE','OPERAÇÃO','AJUDANTE (CARGAS)','12345678901','2026-10-06']]);
+  ws['!cols'] = [{wch:8},{wch:9},{wch:36},{wch:18},{wch:14},{wch:22},{wch:13},{wch:12}];
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Funcionarios');
+  XLSX.writeFile(wb, 'Modelo_Importacao_Funcionarios.xlsx');
+}
+let fcImportItens = [];
+async function fcImportarAnalisar() {
+  const inp = document.getElementById('fc-arquivo'); const out = document.getElementById('fc-import-preview');
+  fcImportItens = [];
+  if (!inp.files.length) return;
+  try {
+    const wb = XLSX.read(await inp.files[0].arrayBuffer(), { type: 'array', cellDates: true });
+    const linhas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '', raw: false, dateNF: 'yyyy-mm-dd' });
+    const chave = (o, ...nomes) => { const k = Object.keys(o).find(k => nomes.includes(k.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase())); return k ? String(o[k]).trim() : ''; };
+    const dataISO = s => { if (!s) return ''; const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return m ? m[3] + '-' + m[2] + '-' + m[1] : (/^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : ''); };
+    const novos = [], alterados = [], iguais = [], erros = [];
+    const vistos = new Set();
+    linhas.forEach((o, i) => {
+      const d = { empresa: chave(o, 'EMPRESA') || 'GBEX', codigo: chave(o, 'CODIGO', 'MATRICULA', 'COD'), nome: chave(o, 'NOME'), filial: chave(o, 'FILIAL'),
+        setor: chave(o, 'SETOR'), cargo: chave(o, 'CARGO'), pis: chave(o, 'PIS', 'PIS/PASEP', 'NIS'), admissao: dataISO(chave(o, 'ADMISSAO', 'DATA ADMISSAO')) };
+      if (!d.codigo && !d.nome) return; // linha vazia
+      const m = fcMontar(d);
+      if (m.erro) { erros.push('Linha ' + (i + 2) + (m.cod ? ' (' + m.cod + ')' : '') + ': ' + m.erro); return; }
+      if (vistos.has(m.cod)) { erros.push('Linha ' + (i + 2) + ' (' + m.cod + '): código repetido na planilha'); return; }
+      vistos.add(m.cod);
+      const atual = FUNCIONARIOS.find(f => f.codigo === m.cod) || (FUNC_BANCO[m.cod]);
+      if (!atual) { novos.push(m); return; }
+      const mud = Object.keys(m.reg).filter(c => c !== 'empresa' && String(atual[c] || '') !== String(m.reg[c]));
+      if (mud.length) { m.mudou = mud.map(c => c + ': ' + (atual[c] || '—') + ' → ' + m.reg[c]); alterados.push(m); } else iguais.push(m);
+    });
+    fcImportItens = novos.concat(alterados);
+    const lst = (arr, f) => '<div style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:6px 8px;margin:4px 0 10px;font-size:12px;background:var(--surface2)">' + arr.map(f).join('<br>') + '</div>';
+    out.innerHTML =
+      '<b style="color:var(--green)">' + novos.length + ' novo(s)</b> · <b style="color:var(--yellow)">' + alterados.length + ' com alteração</b> · ' + iguais.length + ' sem mudança · <b style="color:var(--red)">' + erros.length + ' com erro</b>' +
+      (novos.length ? lst(novos, m => cadEsc(m.cod + ' ' + m.reg.nome + ' — ' + (m.reg.filial || '').replace('FILIAL - ', ''))) : '') +
+      (alterados.length ? lst(alterados, m => '<b>' + cadEsc(m.cod) + '</b> ' + cadEsc(m.mudou.join('; '))) : '') +
+      (erros.length ? '<div style="color:var(--red)">Linhas com erro (não serão importadas):</div>' + lst(erros, cadEsc) : '') +
+      (fcImportItens.length ? '<button class="btn-afdt" onclick="fcImportarGravar()">Importar ' + fcImportItens.length + ' funcionário(s)</button>' : '<div style="color:var(--text-dim)">Nada para importar.</div>');
+  } catch (e) { out.innerHTML = '<span style="color:var(--red)">Erro ao ler a planilha: ' + cadEsc(e.message) + '</span>'; }
+}
+async function fcImportarGravar() {
+  if (!cadEhAdmin() || !fcImportItens.length) return;
+  const out = document.getElementById('fc-import-preview');
+  let ok = 0; const falhas = [];
+  for (const m of fcImportItens) {
+    try { await fcGravar(m.cod, { ...m.reg, ativo: true }); ok++; } catch (e) { falhas.push(m.cod + ': ' + e.message); }
+  }
+  out.innerHTML = '<span style="color:var(--green)">✅ ' + ok + ' funcionário(s) importado(s).</span>' + (falhas.length ? '<br><span style="color:var(--red)">' + falhas.length + ' falha(s): ' + cadEsc(falhas.join('; ')) + '</span>' : '');
+  fcImportItens = []; document.getElementById('fc-arquivo').value = '';
+  fcRender();
+}
+
+// ─────────────────────────────────────────────
+//  CADASTROS — HOME OFFICE (v85)
+// ─────────────────────────────────────────────
+function hoCadRender() {
+  document.getElementById('ho-cad-aviso').innerHTML = HO_BANCO ? '' :
+    'A lista abaixo ainda é a fixa do app. Ao incluir ou retirar alguém, ela passa a ser gerida por aqui (o robô também passa a usá-la).';
+  document.getElementById('ho-cad-lista').innerHTML = HO_FUNCIONARIOS.length ? '<table class="val-table"><thead><tr><th>Código</th><th>Nome</th><th>Empresa</th><th>Filial</th><th></th></tr></thead><tbody>' +
+    HO_FUNCIONARIOS.map(h => { const f = FUNCIONARIOS.find(x => x.codigo === h.codigo) || {};
+      return '<tr><td style="font-family:monospace">' + cadEsc(h.codigo) + '</td><td>' + cadEsc(h.nome) + '</td><td>' + cadEsc(h.empresa || 'GBEX') + '</td><td>' + cadEsc((f.filial || (HO_BANCO && HO_BANCO[h.codigo] && HO_BANCO[h.codigo].filial) || '—').replace('FILIAL - ', '')) + '</td>' +
+        '<td><button class="btn-ghost" style="font-size:12px" onclick="hoCadRetirar(\'' + cadEsc(h.codigo) + '\')">Retirar</button></td></tr>'; }).join('') + '</tbody></table>'
+    : '<span style="font-size:13px;color:var(--text-dim)">Ninguém em home office.</span>';
+}
+// Grava a lista inteira (a 1ª gravação copia a lista fixa para o banco)
+async function hoCadGravarLista(lista) {
+  const obj = {};
+  lista.forEach(h => { const f = FUNCIONARIOS.find(x => x.codigo === h.codigo) || {};
+    obj[h.codigo] = { nome: h.nome, empresa: h.empresa || 'GBEX', filial: f.filial || '', desde: (HO_BANCO && HO_BANCO[h.codigo] && HO_BANCO[h.codigo].desde) || new Date().toISOString().slice(0, 10) }; });
+  await cadPut('home_office', Object.keys(obj).length ? obj : null);
+  HO_BANCO = Object.keys(obj).length ? obj : null;
+  HO_FUNCIONARIOS.length = 0; lista.forEach(h => HO_FUNCIONARIOS.push(h));
+}
+async function hoCadIncluir() {
+  if (!cadEhAdmin()) return;
+  let cod = document.getElementById('ho-cad-codigo').value.trim().toUpperCase();
+  const f = FUNCIONARIOS.find(x => x.codigo === cod) || FUNCIONARIOS.find(x => x.codigo === fcCodigoApp('GBEX', cod));
+  if (!f) { showToast('Funcionário não encontrado. Para GBLOG use GBLOG_000001.', 'error'); return; }
+  if (HO_FUNCIONARIOS.some(h => h.codigo === f.codigo)) { showToast('Já está em home office.', 'error'); return; }
+  if (!confirm('Incluir ' + f.nome + ' no home office?\n\nO robô passa a ignorar os alertas do Fortes para ele e a cobrar as batidas feitas pelo app.')) return;
+  try {
+    await hoCadGravarLista(HO_FUNCIONARIOS.concat([{ codigo: f.codigo, nome: f.nome, empresa: f.empresa || 'GBEX' }]));
+    document.getElementById('ho-cad-codigo').value = '';
+    showToast('✅ Incluído. Lembre de criar o login com perfil Home office (aba Logins).', 'success'); hoCadRender();
+  } catch (e) { showToast('Erro: ' + e.message, 'error'); }
+}
+async function hoCadRetirar(cod) {
+  if (!cadEhAdmin()) return;
+  const h = HO_FUNCIONARIOS.find(x => x.codigo === cod); if (!h) return;
+  if (!confirm('Retirar ' + h.nome + ' do home office?\n\nANTES: gere o "AFDT Home Office" do período em que ele bateu pelo app (aba Validação), senão essas batidas não vão para o Fortes.\n\nDepois: desative o login dele na aba Logins.')) return;
+  try {
+    await hoCadGravarLista(HO_FUNCIONARIOS.filter(x => x.codigo !== cod));
+    showToast('✅ Retirado do home office.', 'success'); hoCadRender();
+  } catch (e) { showToast('Erro: ' + e.message, 'error'); }
+}
+
+// ─────────────────────────────────────────────
+//  CADASTROS — JORNADAS E PIS PELO BACKUP DO FORTES (v85)
+//  Formato do backup (texto, latin-1): cabeçalho "CHAVE=valor"; cada tabela = linha "[NOME]",
+//  linha "[col:tipo;col:tipo...]" e depois uma linha por registro com campos separados por "|".
+//  "@" = vazio; "$XX" = caractere em hexadecimal; horas como "18991230HHMMSS".
+//  Tabelas usadas: EPG (empregados: PIS, rescisão), HOR (horários), DHO (dias: ORDEM 1=Seg..7=Dom),
+//  TDH (turnos do dia), SEP (histórico de horário por empregado — vale a DATA mais recente).
+//  Leitura em fluxo (fflate) para não carregar o arquivo inteiro na memória (GBEX tem ~280 MB).
+// ─────────────────────────────────────────────
+let bkResultado = null;
+function bkInfo() {
+  const el = document.getElementById('bk-ultima');
+  el.textContent = JOR_BANCO ? 'Última atualização: ' + Object.entries(JOR_BANCO).map(([e, v]) => e + ' em ' + fmtDataHora(v.atualizado_em) + ' (' + (v.atualizado_por || '') + ')').join(' · ') : 'Jornadas atuais: versão embutida no app (backup de 05/10/2026).';
+}
+async function bkLerTabelas(file, progresso) {
+  const QUER = { EPG: ['CODIGO','PIS','DTRESCISAO','NOME'], HOR: ['CODIGO','NOME','ESCALA'], DHO: ['HOR_CODIGO','ORDEM'],
+                 TDH: ['DHO_HOR_CODIGO','DHO_ORDEM','BTPINICIAL','BTPFINAL','TURNO'], SEP: ['EPG_CODIGO','DATA','HOR_CODIGO','BATEPONTO'] };
+  const out = { EPG: [], HOR: [], DHO: [], TDH: [], SEP: [] }; let empresa = '';
+  const dec = v => v === '@' ? null : v.replace(/\$([0-9A-F]{2})/g, (m, x) => String.fromCharCode(parseInt(x, 16)));
+  let cur = null, idx = null, pend = null, resto = '';
+  const td = new TextDecoder('latin1');
+  const linha = l => {
+    if (pend) { // linha de colunas da tabela anterior
+      const cols = l.slice(1, -1).split(';').map(c => c.split(':')[0].toUpperCase());
+      cur = QUER[pend] ? pend : null; idx = cur ? QUER[cur].map(c => cols.indexOf(c)) : null; pend = null; return;
+    }
+    if (l.charCodeAt(0) === 91 && /^\[[A-Za-z_0-9]+\]$/.test(l)) { pend = l.slice(1, -1).toUpperCase(); cur = null; return; }
+    if (!empresa && l.startsWith('EMP_NOME=')) { empresa = l.slice(9).trim().toUpperCase(); return; }
+    if (!cur || !l) return;
+    const v = l.split('|'); const r = {};
+    QUER[cur].forEach((c, i) => { r[c] = idx[i] >= 0 && v[idx[i]] !== undefined ? dec(v[idx[i]]) : null; });
+    out[cur].push(r);
+  };
+  const texto = chunk => { const s = resto + chunk; const ls = s.split('\r\n'); resto = ls.pop(); ls.forEach(linha); };
+  const total = file.size; let lido = 0;
+  const reader = file.stream().getReader();
+  if (/\.zip$/i.test(file.name)) {
+    await new Promise((resolve, reject) => {
+      const unz = new fflate.Unzip(arq => {
+        if (!/\.bt$/i.test(arq.name)) return;
+        arq.ondata = (err, dados, final) => { if (err) return reject(err); texto(td.decode(dados, { stream: !final })); if (final) { if (resto) linha(resto); resolve(); } };
+        arq.start();
+      });
+      unz.register(fflate.UnzipInflate);
+      (async () => { try { for (;;) { const { done, value } = await reader.read(); if (done) { unz.push(new Uint8Array(0), true); break; } lido += value.length; progresso(lido / total); unz.push(value); } } catch (e) { reject(e); } })();
+    });
+  } else {
+    for (;;) { const { done, value } = await reader.read(); if (done) break; lido += value.length; progresso(lido / total); texto(td.decode(value, { stream: true })); }
+    if (resto) linha(resto);
+  }
+  return { empresa, ...out };
+}
+function bkMontar(t) {
+  const emp = t.empresa === 'GBLOG' ? 'GBLOG' : 'GBEX', pref = emp === 'GBLOG' ? 'GBLOG_' : '';
+  const DIAS = ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
+  const hm = s => { if (!s) return ''; const x = s.length >= 12 ? s.slice(8, 12) : '0000'; return x.slice(0, 2) + ':' + x.slice(2); };
+  const mins = (a, b) => { const x = +a.slice(0, 2) * 60 + +a.slice(3), y = +b.slice(0, 2) * 60 + +b.slice(3); return ((y - x) % 1440 + 1440) % 1440; };
+  const fmt = m => Math.floor(m / 60) + 'h' + (m % 60 ? String(m % 60).padStart(2, '0') : '');
+  const faixa = o => { o.sort((a, b) => a - b); if (o.length === 1) return DIAS[o[0]]; return o.every((x, i) => !i || x === o[i - 1] + 1) ? DIAS[o[0]] + ' a ' + DIAS[o.at(-1)] : o.map(x => DIAS[x]).join(', '); };
+  const hor = {}; t.HOR.forEach(x => hor[x.CODIGO] = x);
+  const dho = {}; t.DHO.forEach(x => { (dho[x.HOR_CODIGO] = dho[x.HOR_CODIGO] || []).push(+x.ORDEM); });
+  const tdh = {}; t.TDH.forEach(x => { const k = x.DHO_HOR_CODIGO + '|' + (+x.DHO_ORDEM); (tdh[k] = tdh[k] || []).push(x); });
+  const resc = {}; const pis = {}; t.EPG.forEach(x => { resc[x.CODIGO] = x.DTRESCISAO; pis[x.CODIGO] = (x.PIS || '').trim(); });
+  const hoje = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const sep = {}; t.SEP.forEach(x => { if (x.DATA <= hoje && (!sep[x.EPG_CODIGO] || x.DATA > sep[x.EPG_CODIGO].DATA)) sep[x.EPG_CODIGO] = x; });
+  const montar = c => {
+    const H = hor[c], ciclo = H.ESCALA === '1';
+    const grupos = new Map();
+    (dho[c] || []).sort((a, b) => a - b).forEach(o => {
+      const par = (tdh[c + '|' + o] || []).sort((a, b) => (+a.TURNO || 0) - (+b.TURNO || 0)).map(x => [hm(x.BTPINICIAL), hm(x.BTPFINAL)]);
+      if (!par.length) return; const k = JSON.stringify(par); if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(o);
+    });
+    let tot = 0; const linhas = [];
+    grupos.forEach((os, k) => { const par = JSON.parse(k); const m = par.reduce((s, [a, b]) => s + mins(a, b), 0); tot += m * os.length;
+      linhas.push({ dias: ciclo ? os.map(x => 'Dia ' + String(x).padStart(2, '0') + ' do ciclo').join(', ') : faixa(os.map(x => x - 1)),
+        e1: par[0][0], s1: par[0][1], e2: par[1] ? par[1][0] : '', s2: (par[1] ? par[1][1] : '') + (par.length > 2 ? ' (+' + par.slice(2).map(([a, b]) => a + '–' + b).join(' / ') + ')' : ''), hdia: fmt(m) }); });
+    return { grupo: c, nome: (H.NOME || '').trim(), escala: ciclo ? 'Ciclo' : 'Semanal', semana: ciclo ? 'Variável' : fmt(tot), codigos: [c], linhas, empresa: emp };
+  };
+  const J = {}, F = {}, usados = new Set(), pisDif = [];
+  FUNCIONARIOS.filter(f => (f.empresa || 'GBEX') === emp).forEach(f => {
+    const cod = f.codigo.replace('GBLOG_', '');
+    if (pis[cod] && pis[cod].replace(/^0+/, '') !== String(f.pis || '').replace(/^0+/, '')) pisDif.push({ codigo: f.codigo, nome: f.nome, atual: f.pis || '', fortes: pis[cod] });
+    if (resc[cod]) return;
+    const s = sep[cod]; if (!s || !s.HOR_CODIGO || s.BATEPONTO !== '1' || !hor[s.HOR_CODIGO]) return;
+    F[f.codigo] = s.HOR_CODIGO;
+    const k = f.filial + '|' + s.HOR_CODIGO; if (usados.has(k) || !f.filial) return; usados.add(k);
+    (J[f.filial] = J[f.filial] || []).push(montar(s.HOR_CODIGO));
+  });
+  Object.values(J).forEach(l => l.sort((a, b) => a.grupo.localeCompare(b.grupo)));
+  return { emp, J, F, pisDif, qtdFunc: Object.keys(F).length };
+}
+async function bkAnalisar() {
+  const inp = document.getElementById('bk-arquivo'), out = document.getElementById('bk-preview');
+  bkResultado = null; if (!inp.files.length) return;
+  if (typeof fflate === 'undefined') { out.innerHTML = '<span style="color:var(--red)">Biblioteca de leitura de .zip não carregou — recarregue a página (Ctrl+F5).</span>'; return; }
+  const file = inp.files[0];
+  out.innerHTML = 'Lendo o backup... <b id="bk-pct">0%</b> <span style="color:var(--text-dim)">(o da GBEX pode levar 1 a 2 minutos)</span>';
+  try {
+    const t = await bkLerTabelas(file, f => { const e = document.getElementById('bk-pct'); if (e) e.textContent = Math.round(f * 100) + '%'; });
+    if (!t.HOR.length || !t.SEP.length) throw new Error('não encontrei as tabelas de horário — confira se é o backup do Fortes Ponto');
+    const r = bkMontar(t); bkResultado = r;
+    const atual = Object.values(JORNADAS).flat().filter(j => (j.empresa || 'GBEX') === r.emp).length;
+    const novo = Object.values(r.J).flat().length;
+    const mudou = Object.keys({ ...JORNADA_FUNC, ...r.F }).filter(c => (c.startsWith('GBLOG_') ? 'GBLOG' : 'GBEX') === r.emp && JORNADA_FUNC[c] !== r.F[c]);
+    out.innerHTML = '<b>Empresa: ' + r.emp + '</b> · ' + r.qtdFunc + ' funcionário(s) com jornada · ' + novo + ' horário(s) em uso (hoje no app: ' + atual + ')<br>' +
+      '<b style="color:var(--yellow)">' + mudou.length + '</b> funcionário(s) com jornada diferente da que está no app' +
+      (mudou.length ? '<div style="max-height:140px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:6px 8px;margin:6px 0;font-size:12px;background:var(--surface2)">' +
+        mudou.slice(0, 300).map(c => { const f = FUNCIONARIOS.find(x => x.codigo === c) || {}; return cadEsc(c + ' ' + (f.nome || '') + ': ' + (JORNADA_FUNC[c] || '—') + ' → ' + (r.F[c] || 'sem jornada')); }).join('<br>') + '</div>' : '<br>') +
+      '<button class="btn-afdt" onclick="bkGravarJornadas()" style="margin:6px 0 14px">Atualizar jornadas da ' + r.emp + '</button><br>' +
+      '<b style="color:' + (r.pisDif.length ? 'var(--yellow)' : 'var(--green)') + '">' + r.pisDif.length + '</b> funcionário(s) com PIS diferente do Fortes (ou faltando no app)' +
+      (r.pisDif.length ? '<div style="max-height:140px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:6px 8px;margin:6px 0;font-size:12px;background:var(--surface2)">' +
+        r.pisDif.map(x => cadEsc(x.codigo + ' ' + x.nome + ': ' + (x.atual || 'sem PIS') + ' → ' + x.fortes)).join('<br>') + '</div>' +
+        '<button class="btn-afdt" onclick="bkGravarPis()">Corrigir ' + r.pisDif.length + ' PIS</button>' : '');
+  } catch (e) { out.innerHTML = '<span style="color:var(--red)">Erro ao ler o backup: ' + cadEsc(e.message) + '</span>'; }
+}
+async function bkGravarJornadas() {
+  if (!cadEhAdmin() || !bkResultado) return;
+  const r = bkResultado;
+  if (!confirm('Substituir as jornadas da ' + r.emp + ' pelas do backup? Todos os gestores passam a ver na hora.')) return;
+  try {
+    const reg = { J: r.J, F: r.F, atualizado_em: new Date().toISOString(), atualizado_por: currentUser.nome, arquivo: (document.getElementById('bk-arquivo').files[0] || {}).name || '' };
+    await cadPut('jornadas/' + r.emp, reg);
+    aplicarJornadasBanco({ ...(JOR_BANCO || {}), [r.emp]: reg });
+    showToast('✅ Jornadas da ' + r.emp + ' atualizadas.', 'success'); bkInfo();
+  } catch (e) { showToast('Erro ao gravar: ' + e.message, 'error'); }
+}
+async function bkGravarPis() {
+  if (!cadEhAdmin() || !bkResultado || !bkResultado.pisDif.length) return;
+  if (!confirm('Gravar o PIS do Fortes para ' + bkResultado.pisDif.length + ' funcionário(s)?')) return;
+  let ok = 0; const falhas = [];
+  for (const x of bkResultado.pisDif) { try { await fcGravar(x.codigo, { pis: x.fortes }); ok++; } catch (e) { falhas.push(x.codigo); } }
+  showToast('✅ ' + ok + ' PIS corrigido(s)' + (falhas.length ? ' — falhou: ' + falhas.join(', ') : '.'), falhas.length ? 'error' : 'success');
+  bkResultado.pisDif = bkResultado.pisDif.filter(x => falhas.includes(x.codigo));
+}
+
 // Qualquer usuário troca a própria senha (o admin não consegue trocar a de outra pessoa pelo navegador)
 async function trocarMinhaSenha() {
   const nova = prompt('Nova senha (mínimo 6 caracteres):');
