@@ -274,6 +274,7 @@
   .tipo-btn.t-atestado.active { background: var(--yellow); border-color: var(--yellow); }
   .tipo-btn.t-falta.active { background: var(--red); border-color: var(--red); }
   .tipo-btn.t-outro.active { background: var(--purple); border-color: var(--purple); }
+  .tipo-btn.t-deslig.active { background: var(--red); border-color: var(--red); }
 
   .horario-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
@@ -574,7 +575,7 @@
         <button class="empresa-btn gblog" id="btn-gblog" onclick="setEmpresa('GBLOG')">GBLOG</button>
       </div>
       <span class="topbar-user">Olá, <strong id="topbar-nome">—</strong></span>
-      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v85</span>
+      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v86</span>
       <button class="btn-ghost" onclick="trocarMinhaSenha()" title="Trocar minha senha">🔑</button>
       <button class="btn-ghost" onclick="doLogout()">Sair</button>
     </div>
@@ -652,6 +653,7 @@
             <button class="tipo-btn t-atestado" data-tipo="atestado" onclick="setTipo(this)">Atestado</button>
             <button class="tipo-btn t-falta" data-tipo="falta" onclick="setTipo(this)">Falta</button>
             <button class="tipo-btn t-outro" data-tipo="outro" onclick="setTipo(this)">Outro</button>
+            <button class="tipo-btn t-deslig" data-tipo="desligamento" onclick="setTipo(this)">Desligamento</button>
           </div>
         </div>
 
@@ -840,6 +842,7 @@
             <option value="atestado">Atestado</option>
             <option value="falta">Falta</option>
             <option value="outro">Outro</option>
+            <option value="desligamento">Desligamento</option>
           </select>
           <select id="val-status" onchange="renderValidacao()">
             <option value="">Todos os status</option>
@@ -1294,6 +1297,7 @@
           <option value="atestado">Atestado</option>
           <option value="falta">Falta</option>
           <option value="outro">Outro</option>
+          <option value="desligamento">Desligamento</option>
         </select>
       </div>
       <div class="field">
@@ -1396,6 +1400,46 @@ async function carregarCadastrosApp() {
       Object.entries(HO_BANCO).forEach(([cod, v]) => HO_FUNCIONARIOS.push({ codigo: cod, nome: v.nome, empresa: v.empresa || 'GBEX' }));
     }
   } catch (e) { console.warn('Erro ao carregar cadastros do banco:', e); }
+}
+
+// ── Desligamentos (v86) ──
+// /desligamentos/{codigoApp}: { nome, empresa, data, gestor, registro_id, em }
+// Gravado quando o gestor lança uma ocorrência "Desligamento". A partir daí TODAS as pendências
+// da pessoa são apagadas e nenhuma nova aparece (o robô também deixa de criá-las).
+// Desfazer: excluir o lançamento de desligamento em Meus Lançamentos.
+let DESLIGADOS = {};
+async function carregarDesligados() {
+  try { const r = await fetch(FB_URL + '/desligamentos.json'); DESLIGADOS = (r.ok && await r.json()) || {}; }
+  catch (e) { console.warn('desligamentos:', e); }
+}
+// Só vale do dia do desligamento em diante (dataRef no formato DD/MM/AAAA da pendência);
+// pendências de dias anteriores continuam valendo (rescisão).
+function estaDesligado(codigo, empresa, dataRef) {
+  const c = String(codigo || '');
+  const app = (empresa === 'GBLOG' && !c.startsWith('GBLOG_')) ? 'GBLOG_' + c : c;
+  const d = DESLIGADOS[app];
+  if (!d) return false;
+  if (!dataRef || !d.data) return true;
+  return dataRef.split('/').reverse().join('-') >= d.data;
+}
+// Apaga do banco todas as pendências abertas de um funcionário (lista vinda do cache ou do banco)
+async function apagarPendenciasDe(codigoApp, empresa) {
+  const cod = codigoApp.replace('GBLOG_', '');
+  const r = await fetch(FB_URL + '/pendencias_abertas.json');
+  const todas = (r.ok && await r.json()) || {};
+  const chaves = Object.entries(todas).filter(([k, v]) => v && String(v.codigo) === cod && (v.empresa || 'GBEX') === (empresa || 'GBEX') && estaDesligado(v.codigo, v.empresa || 'GBEX', v.data_ref)).map(([k]) => k);
+  await Promise.allSettled(chaves.map(k => fetch(FB_URL + '/pendencias_abertas/' + k + '.json', { method: 'DELETE' })));
+  return chaves.length;
+}
+async function registrarDesligamento(func, dataISO, registroId) {
+  const reg = { nome: func.nome, empresa: func.empresa || currentEmpresa, data: dataISO, gestor: currentUser.nome,
+    registro_id: registroId, em: new Date().toISOString() };
+  const res = await fetch(FB_URL + '/desligamentos/' + func.codigo + '.json', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(reg) });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  DESLIGADOS[func.codigo] = reg;
+  const n = await apagarPendenciasDe(func.codigo, reg.empresa);
+  if (pendenciasCache) pendenciasCache.itens = pendenciasCache.itens.filter(it => !estaDesligado(it.codigo, it.empresa || 'GBEX', it.data_ref));
+  return n;
 }
 
 // Filiais atribuídas manualmente pelo admin (funcionário novo/sem filial no cadastro
@@ -2225,9 +2269,20 @@ async function carregarPendencias() {
     }
 
     // Converter objeto Firebase {id: item} para array
-    const itens = typeof data === 'object' && !Array.isArray(data)
+    let itens = typeof data === 'object' && !Array.isArray(data)
       ? Object.values(data)
       : (data.itens || []);
+
+    // Desligados: pendências não aparecem e são apagadas do banco (inclusive as que o robô
+    // tenha criado antes de saber do desligamento)
+    await carregarDesligados();
+    if (Object.keys(DESLIGADOS).length && typeof data === 'object' && !Array.isArray(data)) {
+      Object.entries(data).forEach(([k, v]) => {
+        if (v && estaDesligado(v.codigo, v.empresa || 'GBEX', v.data_ref))
+          fetch(FB_URL + '/pendencias_abertas/' + k + '.json', { method: 'DELETE' }).catch(() => {});
+      });
+      itens = itens.filter(v => v && !estaDesligado(v.codigo, v.empresa || 'GBEX', v.data_ref));
+    }
 
     if (!itens.length) {
       empty.style.display = 'block';
@@ -2297,7 +2352,7 @@ async function carregarPendencias() {
 let pendFormAberto = null; // codigo_data do item com form aberto
 const pendLancadosSession = new Set(); // lançados nesta sessão (cache local)
 // Tipos que resolvem o DIA INTEIRO (mesma regra usada pelo robô Python em TIPOS_DIA_INTEIRO/por_dia)
-const TIPOS_DIA_INTEIRO = ['folga','falta','atestado','ferias','outro'];
+const TIPOS_DIA_INTEIRO = ['folga','falta','atestado','ferias','outro','desligamento'];
 // Dia inteiro já resolvido nesta sessão (chave codigo_data, sem horário) — Folga/Falta/Atestado/Outro
 // cobrem o dia todo, mas a pendência original tem um horário real que nunca bateria com um fallback fixo
 const pendLancadosDiaSession = new Set();
@@ -2454,6 +2509,7 @@ async function renderPendencias() {
                 '<option value="atestado">Atestado</option>' +
                 '<option value="falta">Falta</option>' +
                 '<option value="outro">Outro</option>' +
+                '<option value="desligamento">Desligamento</option>' +
               '</select>' +
             '</div>' +
             '<div id="pf-horas-' + itemKey + '" style="display:flex;gap:8px;align-items:flex-end">' +
@@ -2592,6 +2648,7 @@ async function pfGravar(key, codigo, dataRef, nome) {
   // Buscar dados do funcionário
   const func = buscarFunc(codigo, currentEmpresa);
   if (!func) { showToast('Funcionário não encontrado.', 'error'); return; }
+  if (tipo === 'desligamento' && !confirm('Registrar o DESLIGAMENTO de ' + func.nome + '?\n\nAs pendências dessa pessoa a partir desta data serão apagadas e nenhuma nova (dessa data em diante) vai aparecer.\n(Para desfazer: excluir este lançamento em Meus Lançamentos.)')) return;
 
   // Converter data DD/MM/YYYY → YYYY-MM-DD
   var dataISO = '';
@@ -2647,6 +2704,10 @@ async function pfGravar(key, codigo, dataRef, nome) {
   }
 
   await storageAppend(registro);
+  if (tipo === 'desligamento') {
+    try { const n = await registrarDesligamento(func, dataISO, registro.id); showToast('Desligamento registrado — ' + n + ' pendência(s) apagada(s).', 'success'); }
+    catch (e) { showToast('Lançamento gravado, mas falhou ao marcar o desligamento: ' + e.message, 'error'); }
+  }
 
   // Remover pendência do Firebase usando o key diretamente
   // O key do item NO APP é igual à chave no Firebase: codigo_YYYY-MM-DD_HH-MM
@@ -2807,6 +2868,18 @@ async function deletarRegMeus(id) {
   const all = await storageGet(STORAGE_KEY) || [];
   const reg = all.find(r => r.id === id);
 
+  if (reg && reg.tipo === 'desligamento') {
+    try {
+      await fetch(FB_URL + '/desligamentos/' + reg.codigo + '.json', { method: 'DELETE' });
+      delete DESLIGADOS[reg.codigo];
+    } catch (e) { console.warn('Erro ao desfazer desligamento:', e); }
+    await storageSet(STORAGE_KEY, all.filter(r => r.id !== id));
+    showToast('Desligamento desfeito — novas pendências voltam a aparecer.', 'info');
+    renderMeus();
+    if (pendenciasCache) carregarPendencias();
+    return;
+  }
+
   if (reg) {
     // Remover do cache de sessão — apaga as duas variantes (com e sem prefixo GBLOG_),
     // já que reg.codigo pode estar prefixado mas o restante da tela nunca usa o prefixo
@@ -2905,6 +2978,7 @@ async function gravar() {
   const saida = currentTipo === 'lancamento' ? document.getElementById('f-saida').value : '';
   const obs = document.getElementById('f-obs').value.trim();
 
+  if (currentTipo === 'desligamento' && !confirm('Registrar o DESLIGAMENTO de ' + selectedFunc.nome + '?\n\nAs pendências dessa pessoa a partir desta data serão apagadas e nenhuma nova (dessa data em diante) vai aparecer.')) return;
   if (currentTipo === 'lancamento' && !entrada && !saida) {
     showToast('Informe ao menos entrada ou saída.', 'error'); return;
   }
@@ -2939,6 +3013,10 @@ async function gravar() {
   };
 
   await storageAppend(registro);
+  if (currentTipo === 'desligamento') {
+    try { await registrarDesligamento(selectedFunc, data, registro.id); }
+    catch (e) { showToast('Lançamento gravado, mas falhou ao marcar o desligamento: ' + e.message, 'error'); }
+  }
   showToast('Registro gravado com sucesso!', 'success');
 
   clearFunc();
@@ -3103,7 +3181,8 @@ const VAL_TIPOS_EXPORT = [
   { tipo: 'falta',      aba: 'FALTA' },
   { tipo: 'folga',      aba: 'FOLGA' },
   { tipo: 'ferias',     aba: 'FÉRIAS' },
-  { tipo: 'outro',      aba: 'OUTRO' }
+  { tipo: 'outro',      aba: 'OUTRO' },
+  { tipo: 'desligamento', aba: 'DESLIGAMENTO' }
 ];
 
 const VAL_COLUNAS_EXPORT = ['Data','Código','Nome','Filial','Setor','Horário','Observação','Gestor','Status','Exportado AFDT','Exportado em'];
@@ -4685,7 +4764,7 @@ function fmtDataHora(iso) {
 }
 
 function labelTipo(t) {
-  const m = {lancamento:'Lançamento',folga:'Folga',atestado:'Atestado',falta:'Falta',ferias:'Férias',outro:'Outro'};
+  const m = {lancamento:'Lançamento',folga:'Folga',atestado:'Atestado',falta:'Falta',ferias:'Férias',outro:'Outro',desligamento:'Desligamento'};
   return m[t]||t;
 }
 
