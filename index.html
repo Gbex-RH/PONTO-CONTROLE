@@ -575,7 +575,7 @@
         <button class="empresa-btn gblog" id="btn-gblog" onclick="setEmpresa('GBLOG')">GBLOG</button>
       </div>
       <span class="topbar-user">Olá, <strong id="topbar-nome">—</strong></span>
-      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v88</span>
+      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v89</span>
       <button class="btn-ghost" onclick="trocarMinhaSenha()" title="Trocar minha senha">🔑</button>
       <button class="btn-ghost" onclick="doLogout()">Sair</button>
     </div>
@@ -1180,7 +1180,7 @@
             <button class="btn-afdt" style="margin-left:auto" onclick="fcAbrirForm(null)">+ Novo funcionário</button></div>
           <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
             <input type="text" id="fc-busca" placeholder="Buscar nome ou código..." oninput="debounceRender(fcRender)" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none;width:220px">
-            <select id="fc-filtro" onchange="fcRender()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none"><option value="">Todos</option><option value="app">Novos/editados pelo app</option><option value="sempis">Sem PIS</option><option value="semfilial">Sem filial</option></select>
+            <select id="fc-filtro" onchange="fcRender()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none"><option value="">Todos</option><option value="app">Novos/editados pelo app</option><option value="sempis">Sem PIS</option><option value="semfilial">Sem filial</option><option value="filialmudou">Filial diferente da original</option></select>
           </div>
           <div class="val-table-wrap" id="fc-lista"></div>
         </div>
@@ -1445,6 +1445,13 @@ async function registrarDesligamento(func, dataISO, registroId) {
 // Filiais atribuídas manualmente pelo admin (funcionário novo/sem filial no cadastro
 // estático) — carregado do Firebase em carregarPendencias(). Ver atribuirFilialOrfao().
 let FUNC_EXTRA = {};
+// Filial ATUAL do funcionário de um lançamento (v89). O lançamento guarda a filial do dia em
+// que foi feito; se o cadastro mudou depois (ex.: funcionário corrigido de Fortaleza para
+// Matriz), os filtros e telas devem seguir o cadastro atual.
+function filialReg(r) {
+  const f = buscarFunc(r.codigo, r.empresa || 'GBEX');
+  return (f && f.filial) || r.filial || '';
+}
 function buscarFunc(codigo, empresa) {
   if (codigo === undefined || codigo === null) return undefined;
   let k = String(codigo).trim();
@@ -2831,7 +2838,7 @@ async function renderMeus() {
     if (!r.data || !r.data.startsWith(mes)) return false;
     if ((r.empresa || 'GBEX') !== currentEmpresa) return false;
     if (!isAdmin && !codigosPermitidos.has(r.codigo)) return false;
-    if (isAdmin && filtMeusFilial && r.filial !== filtMeusFilial) return false;
+    if (isAdmin && filtMeusFilial && filialReg(r) !== filtMeusFilial) return false;
     if (busca && !r.nome.toLowerCase().includes(busca) && !r.codigo.includes(busca)) return false;
     return true;
   });
@@ -2940,7 +2947,7 @@ async function toggleTodos() {
   let visiveis = all.filter(r => {
     if (!r.data || !r.data.startsWith(mes)) return false;
     if ((r.empresa || 'GBEX') !== currentEmpresa) return false;
-    if (filtFilial && r.filial !== filtFilial) return false;
+    if (filtFilial && filialReg(r) !== filtFilial) return false;
     if (filtTipo && r.tipo !== filtTipo) return false;
     if (filtStatus && r.status !== filtStatus) return false;
     if (filtBusca && !r.nome.toLowerCase().includes(filtBusca) && !r.codigo.includes(filtBusca)) return false;
@@ -3051,7 +3058,7 @@ async function renderRecentes() {
     <tbody>${recentes.map(r => `
       <tr>
         <td>${fmtData(r.data)}</td>
-        <td><strong>${r.nome.split(' ').slice(0,2).join(' ')}</strong><br><span style="color:var(--text-muted);font-size:11px">${r.filial.replace('FILIAL - ','')}</span></td>
+        <td><strong>${r.nome.split(' ').slice(0,2).join(' ')}</strong><br><span style="color:var(--text-muted);font-size:11px">${filialReg(r).replace('FILIAL - ','')}</span></td>
         <td><span class="badge badge-${r.tipo}">${labelTipo(r.tipo)}</span></td>
         <td>${r.entrada || '—'}</td>
         <td>${r.saida || '—'}</td>
@@ -3109,7 +3116,7 @@ async function getValidacaoFiltrada() {
   const filtBusca = document.getElementById('val-busca').value.trim().toLowerCase();
 
   let dados = all.filter(r => r.data && r.data.startsWith(mes) && (r.empresa || 'GBEX') === currentEmpresa);
-  if (filtFilial) dados = dados.filter(r => r.filial === filtFilial);
+  if (filtFilial) dados = dados.filter(r => filialReg(r) === filtFilial);
   if (filtTipo) dados = dados.filter(r => r.tipo === filtTipo);
   if (filtStatus) dados = dados.filter(r => r.status === filtStatus);
   if (filtExportado === 'sim') dados = dados.filter(r => r.exportado_afdt);
@@ -3155,7 +3162,7 @@ async function renderValidacao() {
         </button>
       </td>
       <td>${fmtData(r.data)}</td>
-      <td style="white-space:nowrap">${r.filial.replace('FILIAL - ','')}</td>
+      <td style="white-space:nowrap">${filialReg(r).replace('FILIAL - ','')}</td>
       <td style="font-family:monospace">${r.codigo}</td>
       <td style="white-space:nowrap"><strong>${r.nome.split(' ').slice(0,2).join(' ')}</strong></td>
       <td><span class="badge badge-${r.tipo}">${labelTipo(r.tipo)}</span></td>
@@ -3198,7 +3205,7 @@ function valRegistroParaLinha(r) {
     'Data': fmtData(r.data),
     'Código': r.codigo,
     'Nome': r.nome,
-    'Filial': (r.filial || '').replace('FILIAL - ', ''),
+    'Filial': filialReg(r).replace('FILIAL - ', ''),
     'Setor': r.setor || '',
     'Horário': horario || '—',
     'Observação': r.obs || '',
@@ -3846,7 +3853,7 @@ async function gerarAFDT() {
     (r.entrada || r.saida) &&
     (r.empresa || 'GBEX') === currentEmpresa
   );
-  if (filtFilial) candidatos = candidatos.filter(r => r.filial === filtFilial);
+  if (filtFilial) candidatos = candidatos.filter(r => filialReg(r) === filtFilial);
 
   const pendentes = candidatos.filter(r => r.status !== 'confirmado');
   const jaExportados = candidatos.filter(r => r.status === 'confirmado' && r.exportado_afdt);
@@ -4474,12 +4481,18 @@ function fcRender() {
   if (filtro === 'app') lista = lista.filter(f => FUNC_BANCO[f.codigo]);
   if (filtro === 'sempis') lista = lista.filter(f => !f.pis && !f._desligado);
   if (filtro === 'semfilial') lista = lista.filter(f => !f.filial && !f._desligado);
+  if (filtro === 'filialmudou') lista = lista.filter(f => FUNC_BASE[f.codigo] && FUNC_BASE[f.codigo].filial && f.filial !== FUNC_BASE[f.codigo].filial);
   lista.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
   const total = lista.length; lista = lista.slice(0, 200);
-  const origem = f => f._desligado ? '<span style="color:var(--red)">Desligado</span>' : FUNC_BANCO[f.codigo] ? (FUNC_BASE[f.codigo] ? '<span style="color:var(--yellow)">Editado</span>' : '<span style="color:var(--green)">Novo</span>') : '';
+  // Quem alterou e quando (gravado em /funcionarios por fcGravar) + o que mudou na filial
+  const quem = v => v && v.atualizado_por ? '<br><span style="color:var(--text-dim)">por ' + cadEsc(v.atualizado_por.split(' ').slice(0, 2).join(' ')) + (v.atualizado_em ? ' em ' + new Date(v.atualizado_em).toLocaleDateString('pt-BR') : '') + '</span>' : '';
+  const mudouFilial = f => FUNC_BASE[f.codigo] && FUNC_BASE[f.codigo].filial && f.filial !== FUNC_BASE[f.codigo].filial
+    ? '<br><span style="color:var(--yellow)">original: ' + cadEsc(FUNC_BASE[f.codigo].filial.replace('FILIAL - ', '')) + '</span>' : '';
+  const origem = f => (f._desligado ? '<span style="color:var(--red)">Desligado</span>' : FUNC_BANCO[f.codigo] ? (FUNC_BASE[f.codigo] ? '<span style="color:var(--yellow)">Editado</span>' : '<span style="color:var(--green)">Novo</span>') : '') + (FUNC_BANCO[f.codigo] ? quem(FUNC_BANCO[f.codigo]) : '');
   document.getElementById('fc-lista').innerHTML = total ? '<table class="val-table"><thead><tr><th>Código</th><th>Nome</th><th>Empresa</th><th>Filial</th><th>Setor</th><th>PIS</th><th></th><th></th></tr></thead><tbody>' +
-    lista.map(f => '<tr style="' + (f._desligado ? 'opacity:.5' : '') + '"><td style="font-family:monospace">' + cadEsc(f.codigo) + '</td><td>' + cadEsc(f.nome) + '</td><td>' + cadEsc(f.empresa || 'GBEX') + '</td><td>' + cadEsc((f.filial || '—').replace('FILIAL - ', '')) + '</td><td>' + cadEsc(f.setor || '—') + '</td><td style="font-family:monospace">' + (f.pis ? cadEsc(f.pis) : '<span style="color:var(--yellow)">sem PIS</span>') + '</td><td style="font-size:12px">' + origem(f) + '</td>' +
-      '<td><button class="btn-ghost" style="font-size:12px" onclick="fcAbrirForm(\'' + cadEsc(f.codigo) + '\')">Editar</button></td></tr>').join('') + '</tbody></table>' +
+    lista.map(f => '<tr style="' + (f._desligado ? 'opacity:.5' : '') + '"><td style="font-family:monospace">' + cadEsc(f.codigo) + '</td><td>' + cadEsc(f.nome) + '</td><td>' + cadEsc(f.empresa || 'GBEX') + '</td><td>' + cadEsc((f.filial || '—').replace('FILIAL - ', '')) + mudouFilial(f) + '</td><td>' + cadEsc(f.setor || '—') + '</td><td style="font-family:monospace">' + (f.pis ? cadEsc(f.pis) : '<span style="color:var(--yellow)">sem PIS</span>') + '</td><td style="font-size:12px">' + origem(f) + '</td>' +
+      '<td style="white-space:nowrap"><button class="btn-ghost" style="font-size:12px" onclick="fcAbrirForm(\'' + cadEsc(f.codigo) + '\')">Editar</button>' +
+      (FUNC_BANCO[f.codigo] && FUNC_BASE[f.codigo] ? ' <button class="btn-ghost" style="font-size:12px" title="Desfaz as alterações feitas pelo app e volta ao cadastro original" onclick="fcVoltarOriginal(\'' + cadEsc(f.codigo) + '\')">↩ Original</button>' : '') + '</td></tr>').join('') + '</tbody></table>' +
       (total > 200 ? '<div style="font-size:12px;color:var(--text-dim);margin-top:8px">Mostrando 200 de ' + total + ' — use a busca.</div>' : '')
     : '<span style="font-size:13px;color:var(--text-dim)">Nenhum funcionário encontrado.</span>';
 }
@@ -4542,6 +4555,20 @@ async function fcSalvar() {
     await fcGravar(m.cod, m.reg);
     showToast('✅ Funcionário salvo.', 'success'); fcFecharForm(); fcRender();
   } catch (e) { showToast('Erro ao salvar: ' + e.message, 'error'); }
+}
+// Desfaz as alterações do app num funcionário que existe no cadastro original (FUNC_BASE)
+async function fcVoltarOriginal(cod) {
+  if (!cadEhAdmin() || !FUNC_BASE[cod]) return;
+  const b = FUNC_BASE[cod];
+  if (!confirm('Voltar ' + b.nome + ' ao cadastro original?\n\nFilial: ' + (b.filial || '—') + ' · Setor: ' + (b.setor || '—') + ' · PIS: ' + (b.pis || '—') + '\n\nAs alterações feitas pelo app (inclusive PIS corrigido e desligamento) serão desfeitas.')) return;
+  try {
+    await cadPut('funcionarios/' + cod, null);
+    delete FUNC_BANCO[cod];
+    const i = FUNCIONARIOS.findIndex(f => f.codigo === cod);
+    if (i >= 0) { Object.keys(FUNCIONARIOS[i]).forEach(k => delete FUNCIONARIOS[i][k]); Object.assign(FUNCIONARIOS[i], b); }
+    else { FUNCIONARIOS.push({ ...b }); indexarFunc(FUNCIONARIOS[FUNCIONARIOS.length - 1]); }
+    showToast('✅ ' + b.nome.split(' ')[0] + ' voltou ao cadastro original.', 'success'); fcRender();
+  } catch (e) { showToast('Erro: ' + e.message, 'error'); }
 }
 function fcBaixarModelo() {
   const ws = XLSX.utils.aoa_to_sheet([['Empresa','Código','Nome','Filial','Setor','Cargo','PIS','Admissão'],
