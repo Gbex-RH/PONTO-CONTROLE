@@ -575,7 +575,7 @@
         <button class="empresa-btn gblog" id="btn-gblog" onclick="setEmpresa('GBLOG')">GBLOG</button>
       </div>
       <span class="topbar-user">Olá, <strong id="topbar-nome">—</strong></span>
-      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v87</span>
+      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v88</span>
       <button class="btn-ghost" onclick="trocarMinhaSenha()" title="Trocar minha senha">🔑</button>
       <button class="btn-ghost" onclick="doLogout()">Sair</button>
     </div>
@@ -3578,12 +3578,15 @@ async function importAnalisar() {
         return tipo + hora + ' — por ' + (r.gestor || '?') + (em ? ' em ' + em : '');
       };
       previewEl.innerHTML += '<div style="margin-top:10px;padding:8px;border:1px solid var(--border);border-radius:var(--radius-sm)">' +
-        '⏭️ <b>' + jaResolvidas + ' pendência(s) já resolvidas pelos gestores</b> — não serão importadas, a não ser que você marque a opção abaixo.' +
-        '<div style="max-height:180px;overflow-y:auto;margin-top:6px;font-size:12px;background:var(--surface2);padding:6px 8px;border-radius:6px">' +
-        listaResolvidas.map(({ item, reg }) => '<span style="color:var(--text-muted)">' + escI(item.data_referencia || item.data_ref) + '</span> — <b>' + escI(item.nome) + '</b> ' +
-          '<span style="color:var(--yellow)">' + escI(item.horario) + '</span> → <span style="color:var(--green)">' + escI(fmtR(reg)) + '</span>').join('<br>') + '</div>' +
-        '<label style="display:flex;gap:6px;align-items:center;margin-top:8px;cursor:pointer;color:var(--text)">' +
-        '<input type="checkbox" id="imp-incluir-resolvidas" onchange="importAtualizarSelecao()"> Importar também estas ' + jaResolvidas + ' (voltam para Pendências mesmo já tendo lançamento)</label></div>';
+        '⏭️ <b>' + jaResolvidas + ' pendência(s) já resolvidas pelos gestores</b> — marque as que quer importar mesmo assim (elas voltam para Pendências).' +
+        '<label style="display:flex;gap:6px;align-items:center;margin-top:8px;cursor:pointer;color:var(--text);font-weight:600">' +
+        '<input type="checkbox" id="imp-res-todas" onchange="importMarcarTodas(this.checked)"> Selecionar todas (' + jaResolvidas + ')</label>' +
+        '<div style="max-height:220px;overflow-y:auto;margin-top:6px;font-size:12px;background:var(--surface2);padding:6px 8px;border-radius:6px">' +
+        listaResolvidas.map(({ item, reg }, i) => '<label style="display:flex;gap:6px;align-items:flex-start;padding:2px 0;cursor:pointer">' +
+          '<input type="checkbox" class="imp-res-ck" data-i="' + i + '" onchange="importAtualizarSelecao()" style="margin-top:2px">' +
+          '<span><span style="color:var(--text-muted)">' + escI(item.data_referencia || item.data_ref) + '</span> — <b>' + escI(item.nome) + '</b> ' +
+          '<span style="color:var(--yellow)">' + escI(item.horario) + '</span> → <span style="color:var(--green)">' + escI(fmtR(reg)) + '</span></span></label>').join('') + '</div>' +
+        '<div id="imp-res-contagem" style="margin-top:6px;font-size:12px;color:var(--text-muted)"></div></div>';
     }
 
     if (!filtrados.length && !jaResolvidas) {
@@ -3636,13 +3639,24 @@ async function importAnalisar() {
 // serem apagados/escondidos pela limpeza automática da aba Pendências.
 let importResolvidasCache = [];
 let importNovasCache = [];
+function importMarcarTodas(v) {
+  document.querySelectorAll('.imp-res-ck').forEach(c => c.checked = v);
+  importAtualizarSelecao();
+}
 function importAtualizarSelecao() {
-  const ck = document.getElementById('imp-incluir-resolvidas');
-  const incluir = ck && ck.checked;
-  importItensCache = importNovasCache.concat(incluir ? importResolvidasCache.map(({ item }) => {
+  const marcados = [...document.querySelectorAll('.imp-res-ck:checked')].map(c => +c.dataset.i);
+  const todas = document.getElementById('imp-res-todas');
+  if (todas) {
+    todas.checked = marcados.length > 0 && marcados.length === importResolvidasCache.length;
+    todas.indeterminate = marcados.length > 0 && marcados.length < importResolvidasCache.length;
+  }
+  const cont = document.getElementById('imp-res-contagem');
+  if (cont) cont.textContent = marcados.length + ' de ' + importResolvidasCache.length + ' selecionada(s)';
+  importItensCache = importNovasCache.concat(marcados.map(i => {
+    const { item } = importResolvidasCache[i];
     const func = buscarFunc(item.codigo, item.empresa);
     return { ...item, filial: func ? func.filial : item.filial, reimportada: true };
-  }) : []);
+  }));
   const btn = document.getElementById('btn-importar-pend');
   btn.style.display = importItensCache.length ? '' : 'none';
   btn.textContent = '📥 Importar ' + importItensCache.length + ' pendência(s)';
