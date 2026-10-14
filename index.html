@@ -575,7 +575,7 @@
         <button class="empresa-btn gblog" id="btn-gblog" onclick="setEmpresa('GBLOG')">GBLOG</button>
       </div>
       <span class="topbar-user">Olá, <strong id="topbar-nome">—</strong></span>
-      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v86</span>
+      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v87</span>
       <button class="btn-ghost" onclick="trocarMinhaSenha()" title="Trocar minha senha">🔑</button>
       <button class="btn-ghost" onclick="doLogout()">Sair</button>
     </div>
@@ -2330,7 +2330,7 @@ async function carregarPendencias() {
             const hora = (fbItem.horario||'').replace(':','-');
             const chave = fbItem.codigo + '_' + dk + '_' + hora;
             const chaveDia = fbItem.codigo + '_' + dk;
-            if (pendLancadosSession.has(chave) || pendLancadosDiaSession.has(chaveDia)) {
+            if (!fbItem.reimportada && (pendLancadosSession.has(chave) || pendLancadosDiaSession.has(chaveDia))) {
               // Já resolvido — remover do Firebase silenciosamente
               fetch(FB_URL + '/pendencias_abertas/' + fbKey + '.json', {method:'DELETE'}).catch(()=>{});
             }
@@ -2438,8 +2438,8 @@ async function renderPendencias() {
 
   // Chave completa com hora — mesma construção do pendLancadosSession
   const chaveItem = i => i.codigo + '_' + (i.data_ref ? i.data_ref.split('/').reverse().join('-') : hoje) + '_' + (i.horario||'0000').replace(':','-');
-  const pendentes  = itens.filter(i => !lancadosTodos.has(chaveItem(i)));
-  const resolvidos = itens.filter(i =>  lancadosTodos.has(chaveItem(i)));
+  const pendentes  = itens.filter(i => i.reimportada || !lancadosTodos.has(chaveItem(i)));
+  const resolvidos = itens.filter(i => !i.reimportada && lancadosTodos.has(chaveItem(i)));
 
   // Atualizar título: conta só as realmente pendentes, já filtradas pela filial/empresa do usuário
   if (pendentes.length > 0) {
@@ -2471,7 +2471,7 @@ async function renderPendencias() {
     const filial = filialRaw ? filialRaw.replace('FILIAL - ','') : '—';
     const dataKey = item.data_ref ? item.data_ref.split('/').reverse().join('-') : hoje;
     const itemKey = item.codigo + '_' + dataKey + '_' + (item.horario||'0000').replace(':','-');
-    const resolvido = lancadosTodos.has(itemKey) || pendLancadosDiaSession.has(item.codigo + '_' + dataKey);
+    const resolvido = !item.reimportada && (lancadosTodos.has(itemKey) || pendLancadosDiaSession.has(item.codigo + '_' + dataKey));
     const statusBadge = resolvido
       ? '<span class="badge badge-ok">✓ Resolvido</span>'
       : '<span class="badge badge-pend">● Pendente</span>';
@@ -2685,6 +2685,11 @@ async function pfGravar(key, codigo, dataRef, nome) {
   // Marcar no cache de sessão IMEDIATAMENTE antes de qualquer await
   // Usa o itemKey diretamente — é a chave certa, não depende de entrada/saida
   pendLancadosSession.add(key);
+  // Pendência reimportada (já tinha lançamento antes) resolvida de novo: volta a valer a regra normal
+  if (pendenciasCache) pendenciasCache.itens.forEach(it => {
+    const k2 = it.codigo + '_' + (it.data_ref ? it.data_ref.split('/').reverse().join('-') : '') + '_' + (it.horario || '0000').replace(':', '-');
+    if (k2 === key || (TIPOS_DIA_INTEIRO.includes(tipo) && k2.startsWith(codigo + '_' + dataISO + '_'))) it.reimportada = false;
+  });
 
   // Dia inteiro (folga/falta/atestado/outro): marcar por codigo+data também,
   // cobre qualquer pendência do dia que ainda não estava carregada em pendenciasCache
@@ -3533,22 +3538,23 @@ async function importAnalisar() {
     // - Batida gravada para aquele dia com hora prevista ou hora digitada igual → ignora a batida
     previewEl.innerHTML += '<br>Verificando lançamentos já feitos pelos gestores...';
     const registros = await storageGet(STORAGE_KEY) || [];
-    const diasResolvidos = new Set();   // codigo|empresa|dataISO  (dia inteiro coberto)
-    const batidasResolvidas = new Set(); // codigo|empresa|dataISO|HH:MM
+    const diasResolvidos = new Map();   // codigo|empresa|dataISO → lançamento (dia inteiro coberto)
+    const batidasResolvidas = new Map(); // codigo|empresa|dataISO|HH:MM → lançamento
     registros.forEach(r => {
       if (!r || !r.codigo) return;
       const emp = r.empresa || 'GBEX';
       const dRef = r.data_ref || r.data; // registros antigos não têm data_ref
       if (!dRef) return;
       if (r.tipo && r.tipo !== 'lancamento') {
-        diasResolvidos.add(r.codigo + '|' + emp + '|' + dRef);
+        diasResolvidos.set(r.codigo + '|' + emp + '|' + dRef, r);
       } else {
-        if (r.horario_previsto) batidasResolvidas.add(r.codigo + '|' + emp + '|' + dRef + '|' + r.horario_previsto);
-        if (r.entrada) batidasResolvidas.add(r.codigo + '|' + emp + '|' + dRef + '|' + r.entrada);
+        if (r.horario_previsto) batidasResolvidas.set(r.codigo + '|' + emp + '|' + dRef + '|' + r.horario_previsto, r);
+        if (r.entrada) batidasResolvidas.set(r.codigo + '|' + emp + '|' + dRef + '|' + r.entrada, r);
       }
     });
 
     let jaResolvidas = 0;
+    const listaResolvidas = []; // { item, reg } — mostradas na tela e importáveis se o admin quiser
     filtrados = filtrados.filter(item => {
       const p = item.data_ref.split('/');
       const dataISO = p[2] + '-' + p[1] + '-' + p[0];
@@ -3556,17 +3562,32 @@ async function importAnalisar() {
       // Chave do funcionário como gravada nos lançamentos (GBLOG usa prefixo no cadastro)
       const func = buscarFunc(item.codigo, emp);
       const codReg = func ? func.codigo : item.codigo;
-      if (diasResolvidos.has(codReg + '|' + emp + '|' + dataISO) || diasResolvidos.has(item.codigo + '|' + emp + '|' + dataISO)) { jaResolvidas++; return false; }
-      if (batidasResolvidas.has(codReg + '|' + emp + '|' + dataISO + '|' + item.horario) || batidasResolvidas.has(item.codigo + '|' + emp + '|' + dataISO + '|' + item.horario)) { jaResolvidas++; return false; }
+      const reg = diasResolvidos.get(codReg + '|' + emp + '|' + dataISO) || diasResolvidos.get(item.codigo + '|' + emp + '|' + dataISO)
+        || batidasResolvidas.get(codReg + '|' + emp + '|' + dataISO + '|' + item.horario) || batidasResolvidas.get(item.codigo + '|' + emp + '|' + dataISO + '|' + item.horario);
+      if (reg) { jaResolvidas++; listaResolvidas.push({ item, reg }); return false; }
       return true;
     });
 
+    importResolvidasCache = listaResolvidas;
     if (jaResolvidas) {
-      previewEl.innerHTML += '<br>⏭️ ' + jaResolvidas + ' pendência(s) ignorada(s): já resolvidas pelos gestores.';
+      const escI = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+      const fmtR = r => {
+        const tipo = labelTipo(r.tipo || 'lancamento');
+        const hora = r.tipo && r.tipo !== 'lancamento' ? '' : ' ' + (r.entrada || r.saida || '');
+        const em = r.ts ? new Date(r.ts).toLocaleDateString('pt-BR') : '';
+        return tipo + hora + ' — por ' + (r.gestor || '?') + (em ? ' em ' + em : '');
+      };
+      previewEl.innerHTML += '<div style="margin-top:10px;padding:8px;border:1px solid var(--border);border-radius:var(--radius-sm)">' +
+        '⏭️ <b>' + jaResolvidas + ' pendência(s) já resolvidas pelos gestores</b> — não serão importadas, a não ser que você marque a opção abaixo.' +
+        '<div style="max-height:180px;overflow-y:auto;margin-top:6px;font-size:12px;background:var(--surface2);padding:6px 8px;border-radius:6px">' +
+        listaResolvidas.map(({ item, reg }) => '<span style="color:var(--text-muted)">' + escI(item.data_referencia || item.data_ref) + '</span> — <b>' + escI(item.nome) + '</b> ' +
+          '<span style="color:var(--yellow)">' + escI(item.horario) + '</span> → <span style="color:var(--green)">' + escI(fmtR(reg)) + '</span>').join('<br>') + '</div>' +
+        '<label style="display:flex;gap:6px;align-items:center;margin-top:8px;cursor:pointer;color:var(--text)">' +
+        '<input type="checkbox" id="imp-incluir-resolvidas" onchange="importAtualizarSelecao()"> Importar também estas ' + jaResolvidas + ' (voltam para Pendências mesmo já tendo lançamento)</label></div>';
     }
 
-    if (!filtrados.length) {
-      previewEl.innerHTML += '<br><br>Nenhuma pendência nova para importar' + (jaResolvidas ? ' — todas já foram resolvidas.' : ' com os filtros selecionados.');
+    if (!filtrados.length && !jaResolvidas) {
+      previewEl.innerHTML += '<br><br>Nenhuma pendência nova para importar com os filtros selecionados.';
       return;
     }
 
@@ -3584,6 +3605,7 @@ async function importAnalisar() {
     }
 
     importItensCache = filtrados;
+    importNovasCache = filtrados;
 
     let html = '<br><div style="margin:10px 0;font-weight:600;color:var(--text);">' + filtrados.length + ' pendência(s) para importar:</div>';
     html += '<div style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;background:var(--surface2);font-size:12px;">';
@@ -3602,11 +3624,28 @@ async function importAnalisar() {
       html += '</div>';
     });
     html += '</div>';
-    previewEl.innerHTML += html;
-    btnImp.style.display = '';
+    if (filtrados.length) previewEl.innerHTML += html;
+    else previewEl.innerHTML += '<br>Nenhuma pendência nova — só as já resolvidas acima.';
+    importAtualizarSelecao();
   } catch(e) {
     previewEl.innerHTML = '<span style="color:#e74c3c">Erro ao ler PDF: ' + e.message + '</span>';
   }
+}
+
+// Itens novos + (se marcado) os já resolvidos, que entram com reimportada:true para não
+// serem apagados/escondidos pela limpeza automática da aba Pendências.
+let importResolvidasCache = [];
+let importNovasCache = [];
+function importAtualizarSelecao() {
+  const ck = document.getElementById('imp-incluir-resolvidas');
+  const incluir = ck && ck.checked;
+  importItensCache = importNovasCache.concat(incluir ? importResolvidasCache.map(({ item }) => {
+    const func = buscarFunc(item.codigo, item.empresa);
+    return { ...item, filial: func ? func.filial : item.filial, reimportada: true };
+  }) : []);
+  const btn = document.getElementById('btn-importar-pend');
+  btn.style.display = importItensCache.length ? '' : 'none';
+  btn.textContent = '📥 Importar ' + importItensCache.length + ' pendência(s)';
 }
 
 async function importGravar() {
@@ -3630,7 +3669,7 @@ async function importGravar() {
     let novas = 0, jaExistiam = 0, erros = 0;
     for (const item of importItensCache) {
       const chave = item.codigo + '_' + item.data_ref + '_' + item.horario;
-      if (chavesExistentes.has(chave)) { jaExistiam++; continue; }
+      if (chavesExistentes.has(chave) && !item.reimportada) { jaExistiam++; continue; }
       const p = item.data_ref.split('/');
       const dataISO = p[2] + '-' + p[1] + '-' + p[0];
       const fbKey = item.codigo + '_' + dataISO + '_' + item.horario.replace(':','-');
