@@ -2320,6 +2320,7 @@ async function carregarPendencias() {
           pendLancadosSession.add(r.codigo + '_' + dS + '_' + r.saida.replace(':','-'));
           pendLancadosSession.add(codSemPrefixo + '_' + dS + '_' + r.saida.replace(':','-'));
         }
+        (r.batidas_extra || []).forEach(k => { pendLancadosSession.add(k); pendLancadosSession.add(k.replace('GBLOG_', '')); });
         // Folga/Falta/Atestado/Outro cobrem o dia inteiro — marcar por codigo+data, não por horário
         if (TIPOS_DIA_INTEIRO.includes(r.tipo)) {
           pendLancadosDiaSession.add(r.codigo + '_' + (r.data_ref || r.data));
@@ -2606,6 +2607,25 @@ function pfAtualizarDia(key) {
     (n ? ' — aparece no espelho do turno de <b>' + pfFmtDia(pfMadrugada(n, hora) ? addDiaISO(seg.dataset.sel, -1) : seg.dataset.sel) + '</b>.' : '.');
 }
 
+// ── Ocorrência de dia inteiro em turno noturno (correção 14/10) ──
+// Falta/Folga/Atestado... lançados num turno que vira a meia-noite também resolvem as batidas
+// da madrugada do dia seguinte (ex.: turno de 08/09 18:00–04:00 → pendência "09/09 04:00").
+// Funciona clicando em qualquer pendência do turno (inclusive na da madrugada).
+// Com jornada noturna conhecida (jorNoturna) é automático; sem jornada, usa a pista das próprias
+// pendências (noite no dia D + manhã cedo em D+1) e o gestor confirma.
+function pfCoberturaDiaInteiro(codigo, dataISO, horario, func) {
+  const n = func ? jorNoturna(func.codigo) : null;
+  const itens = ((pendenciasCache && pendenciasCache.itens) || []).filter(it => it.codigo === codigo && it.data_ref);
+  const iso = it => it.data_ref.split('/').reverse().join('-');
+  const temNoite = d => itens.some(it => iso(it) === d && (it.horario || '') >= '17:00');
+  const madrugada = (h, diaTurno) => n ? pfMadrugada(n, h) : (!!h && h < '12:00' && temNoite(diaTurno));
+  let turno = dataISO;
+  if (madrugada(horario, addDiaISO(dataISO, -1))) turno = addDiaISO(dataISO, -1);
+  const prox = addDiaISO(turno, 1);
+  const extras = itens.filter(it => iso(it) === prox && madrugada(it.horario, turno));
+  return { turno, extras, porJornada: !!n };
+}
+
 function pfTipoChange(key) {
   var tipo = document.getElementById('pf-tipo-' + key).value;
   var horarioEl = document.getElementById('pf-horario-' + key);
@@ -2665,6 +2685,23 @@ async function pfGravar(key, codigo, dataRef, nome) {
   }
   if (!dataISO) dataISO = dataHoje();
 
+  // Dia inteiro em turno noturno: o dia de referência é o do TURNO, e as batidas da madrugada
+  // seguinte (pendências de D+1) são resolvidas junto
+  var batidasExtra = [];
+  if (TIPOS_DIA_INTEIRO.includes(tipo) && pendenciasCache) {
+    const cob = pfCoberturaDiaInteiro(codigo, dataISO, item_horario, func);
+    const fmt = it => it.data_ref + ' ' + it.horario;
+    let aplica = cob.extras.length > 0 || cob.turno !== dataISO;
+    if (aplica && !cob.porJornada) {
+      aplica = confirm('Turno que passa da meia-noite?\n\nResolver o turno de ' + cob.turno.split('-').reverse().join('/') +
+        (cob.extras.length ? ' incluindo a madrugada seguinte: ' + cob.extras.map(fmt).join(', ') : '') + '?\n\n(OK = sim · Cancelar = só o dia da pendência clicada)');
+    }
+    if (aplica) {
+      dataISO = cob.turno;
+      batidasExtra = cob.extras.map(it => it.codigo + '_' + it.data_ref.split('/').reverse().join('-') + '_' + (it.horario || '0000').replace(':', '-'));
+    }
+  }
+
   // Dia real da batida = o escolhido no seletor "A batida aconteceu em"
   var dataISOFinal = dataISO;
   var segDia = document.getElementById('pf-dia-' + key);
@@ -2682,6 +2719,7 @@ async function pfGravar(key, codigo, dataRef, nome) {
     entrada: horario,
     saida: '',
     horario_previsto: item_horario,  // hora prevista da pendência original (para dedup na importação)
+    ...(batidasExtra.length ? { batidas_extra: batidasExtra } : {}),  // madrugada do turno resolvida junto
     obs,
     gestor: currentUser.nome,
     gestor_cpf: currentUser.cpf,
@@ -2692,6 +2730,7 @@ async function pfGravar(key, codigo, dataRef, nome) {
   // Marcar no cache de sessão IMEDIATAMENTE antes de qualquer await
   // Usa o itemKey diretamente — é a chave certa, não depende de entrada/saida
   pendLancadosSession.add(key);
+  batidasExtra.forEach(k => pendLancadosSession.add(k));
   // Pendência reimportada (já tinha lançamento antes) resolvida de novo: volta a valer a regra normal
   if (pendenciasCache) pendenciasCache.itens.forEach(it => {
     const k2 = it.codigo + '_' + (it.data_ref ? it.data_ref.split('/').reverse().join('-') : '') + '_' + (it.horario || '0000').replace(':', '-');
@@ -2726,6 +2765,7 @@ async function pfGravar(key, codigo, dataRef, nome) {
   try {
     await fetch(FB_URL + '/pendencias_abertas/' + key + '.json', {method: 'DELETE'});
   } catch(e) { console.warn('Erro ao remover pendência:', e); }
+  batidasExtra.forEach(k => fetch(FB_URL + '/pendencias_abertas/' + k + '.json', { method: 'DELETE' }).catch(() => {}));
 
   // Para Folga/Falta/Atestado/Outro: remover TODAS as batidas do dia do mesmo funcionário
   if (tipo !== 'lancamento' && pendenciasCache) {
