@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<title>Fechamento do Ponto — conferência automática</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<script src="motor.js"></script>
+<script src="auditoria.js"></script>
+<script src="motoristas.js"></script>
+<script src="planilhas.js"></script>
+<script src="backup.js"></script>
+<script src="ti.js"></script>
+<style>
+  :root { --azul:#1f4e78; --borda:#d6dde6; --fundo:#f5f6f8; }
+  body { font-family: Segoe UI, Arial, sans-serif; background: var(--fundo); margin: 0; color: #1b2b3a; }
+  header { background: var(--azul); color: #fff; padding: 14px 24px; }
+  header h1 { margin: 0; font-size: 20px; } header small { opacity: .8; }
+  main { padding: 18px 24px; max-width: 1500px; margin: auto; }
+  .card { background: #fff; border: 1px solid var(--borda); border-radius: 8px; padding: 14px 18px; margin-bottom: 16px; }
+  .card h3 { margin: 0 0 10px; font-size: 15px; color: var(--azul); }
+  .arquivos { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 12px; }
+  .arquivos label { font-weight: 600; font-size: 13px; display: block; margin-bottom: 4px; }
+  .arquivos small { color: #5a6b7c; display: block; margin-bottom: 4px; }
+  .ok { color: #2e7d32; font-size: 12px; min-height: 14px; }
+  button { background: var(--azul); color: #fff; border: 0; border-radius: 6px; padding: 9px 16px; cursor: pointer; font-size: 14px; }
+  button.sec { background: #fff; color: var(--azul); border: 1px solid var(--azul); }
+  button:disabled { opacity: .5; cursor: default; }
+  #status { margin-left: 12px; font-size: 14px; }
+  .resumo { display: flex; gap: 12px; flex-wrap: wrap; }
+  .resumo div { background: #fff; border: 1px solid var(--borda); border-radius: 8px; padding: 10px 16px; min-width: 160px; cursor: pointer; }
+  .resumo div.ativo { outline: 2px solid var(--azul); }
+  .resumo b { font-size: 22px; display: block; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; background: #fff; }
+  th, td { border: 1px solid var(--borda); padding: 5px 7px; vertical-align: top; }
+  th { background: #eef2f6; position: sticky; top: 0; z-index: 1; }
+  td.mono { font-family: Consolas, monospace; white-space: nowrap; }
+  tr.c1 td:first-child { border-left: 5px solid #2e7d32; }
+  tr.c2 td:first-child { border-left: 5px solid #ef6c00; }
+  tr.c3 td:first-child { border-left: 5px solid #c62828; }
+  tr.c4 td:first-child { border-left: 5px solid #90a4ae; }
+  tr.c5 td:first-child { border-left: 5px solid #6a1b9a; }
+  .b-o { color:#000 } .b-i { color:#0d6efd } .b-p { color:#6c757d } .b-x { color:#dc3545 }
+  .gestor { color: #5a6b7c; font-size: 12px; }
+  .barra { display: flex; gap: 10px; align-items: center; margin: 10px 0; flex-wrap: wrap; }
+  input[type=text], input[type=number], select { padding: 6px; border: 1px solid var(--borda); border-radius: 5px; }
+  details summary { cursor: pointer; color: var(--azul); font-weight: 600; }
+</style>
+</head>
+<body>
+<div style="position:sticky;top:0;z-index:9999;background:#d32f2f;color:#fff;text-align:center;font-weight:700;font-size:16px;padding:10px;letter-spacing:.5px;">⚠️ USO PARA TESTES - EM DESENVOLVIMENTO</div>
+<header>
+  <h1>Fechamento do Ponto — conferência automática</h1>
+  <small>Protótipo independente do app do ponto · os arquivos são lidos só neste computador, nada é enviado</small>
+</header>
+<main>
+  <div class="card">
+    <h3>Filial e mês</h3>
+    <div class="arquivos">
+      <div><label>Filial (regra de hora extra)</label>
+        <select id="f-filial">
+          <option value="REC">REC — até 2h 50%, excedente 70% (motorista 75%)</option>
+          <option value="ARU">ARU — até 2h 50%, excedente 100%</option>
+          <option value="THE">THE — 60% fixo</option>
+          <option value="NAT">NAT — 50% (domingo 100%)</option>
+          <option value="MOS">MOS — 50% (domingo 100%)</option>
+          <option value="OUTRA">Outra — 50% fixo</option>
+        </select></div>
+      <div><label>Ignorar matrículas</label><small>Desligados ou fora do escopo</small><input type="text" id="f-ign" placeholder="ex.: 001760, 001772" style="width:95%"><label style="font-weight:normal;margin-top:6px"><input type="checkbox" id="f-demit" checked> Desconsiderar demitidos (com rescisão no espelho)</label><div class="ok" id="ok-demit"></div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Arquivos do mês</h3>
+    <div class="arquivos">
+      <div><label>1. Espelho de ponto (PDF) *</label><small>Fortes Ponto, leiaute detalhado, filial inteira</small><input type="file" id="f-espelho" accept=".pdf"><div class="ok" id="ok-espelho"></div></div>
+      <div><label>2. Respostas dos gestores (Excel) *</label><small>App → Validação → Exportar Excel</small><input type="file" id="f-val" accept=".xlsx"><div class="ok" id="ok-val"></div></div>
+      <div><label>3. Relatório "Batida Inexistente" (PDF)</label><small>Ponto para Controle Diário</small><input type="file" id="f-inex" accept=".pdf"><div class="ok" id="ok-inex"></div></div>
+      <div><label>4. AFDT do app (.txt)</label><small>Gestores e home office (pode escolher os dois)</small><input type="file" id="f-afdt" accept=".txt" multiple><div class="ok" id="ok-afdt"></div></div>
+      <div><label>5. Planilha de viagens do tráfego</label><small>Só se a filial tem motoristas (.xlsb)</small><input type="file" id="f-traf" accept=".xlsb,.xlsx"><div class="ok" id="ok-traf"></div></div>
+      <div><label>6. Backup do Fortes Ponto (.zip)</label><small>Origem das batidas, folgas e escalas já existentes (~30 s)</small><input type="file" id="f-bkp" accept=".zip"><div class="ok" id="ok-bkp"></div></div>
+      <div><label>7. Apoio de atestados (.json)</label><small>Gerado por <code>apoio_atestados.py</code> (Fortes Pessoal + e-mail)</small><input type="file" id="f-apoio" accept=".json"><div class="ok" id="ok-apoio"></div></div>
+    </div>
+    <div style="margin-top:14px"><button id="btn-processar" disabled>Processar</button><span id="status"></span></div>
+  </div>
+
+  <details class="card" id="box-ti">
+    <summary>Intervalos de sábado/domingo e janta (mesmas regras do site da TI)</summary>
+    <div class="barra">
+      <span>AFDT completo do Fortes (com cabeçalho):</span> <input type="file" id="f-ti" accept=".txt">
+      Qtde batidas <select id="ti-qtd"><option value="par" selected>Par</option><option value="impar">Ímpar</option><option value="todas">Todas</option></select>
+      Período <select id="ti-per"><option value="Manhã" selected>Manhã</option><option value="Tarde">Tarde</option><option value="Noite">Noite</option><option value="todos">Todos</option></select>
+      <label><input type="checkbox" id="ti-so" checked> Só com correção</label>
+    </div>
+    <div class="ok" id="ok-ti"></div>
+    <div class="barra" id="ti-acoes" style="display:none">
+      <button class="sec" id="ti-todos">Marcar todos</button><button class="sec" id="ti-nenhum">Desmarcar todos</button>
+      <span style="flex:1"></span><button id="ti-gerar">Gerar TXT (AFDT tratado)</button>
+    </div>
+    <div class="gestor">Legenda: <span class="b-o">original</span> · <span class="b-i">incluída</span> · <span class="b-p">automática</span>. As caixas começam desmarcadas: marque só o que aprovar.</div>
+    <div style="max-height:520px;overflow:auto;margin-top:8px"><table id="ti-tab" style="display:none">
+      <thead><tr><th>PIS / Funcionário</th><th>Data</th><th>E01</th><th>S01</th><th>E02</th><th>S02</th><th>E03</th><th>S03</th><th>E04</th><th>S04</th><th>Horas</th><th>Batidas</th><th>Turno</th><th>Correções sugeridas</th><th>Aprovar</th></tr></thead>
+      <tbody id="ti-body"></tbody></table></div>
+  </details>
+
+  <div id="resultado" style="display:none">
+    <div class="resumo" id="resumo"></div>
+    <div class="barra">
+      <input type="text" id="busca" placeholder="Pesquisar nome, matrícula, texto…" style="width:260px">
+      <button class="sec" id="btn-todos">Marcar todos</button>
+      <button class="sec" id="btn-nenhum">Desmarcar todos</button>
+      <span style="flex:1"></span>
+      <button id="btn-escala">Escala do mês (.txt)</button>
+      <button id="btn-afdt">AFDT complementar (.txt)</button>
+      <button id="btn-excel">Planilha de pendências (.xlsx)</button>
+    </div>
+    <details id="box-mot" style="display:none" class="card"><summary>Motoristas — Movimento 3 (tempo de espera)</summary>
+      <div class="barra">Salário base: <input type="number" id="f-sal" value="3166.34" step="0.01" style="width:110px">
+        Motoristas sem viagem no mês (opcional): <input type="text" id="f-motextra" placeholder="matrículas" style="width:220px">
+        <button id="btn-mov3">Baixar planilha do Movimento 3</button></div>
+      <div id="mot-resumo" class="gestor"></div>
+    </details>
+    <table>
+      <thead><tr><th>Aprovar</th><th>Grupo</th><th>Matrícula / Nome</th><th>Dia</th><th>Espelho hoje</th><th>Situação</th><th>O que fazer</th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</main>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+const $ = id => document.getElementById(id);
+const dados = {};
+let itens = [], filtroCat = null, mesRef = null, motor3 = null;
+const esc = s => String(s || '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const dd = n => String(n).padStart(2, '0');
+
+async function lerPdf(file) {
+  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+  const pages = [];
+  for (let i = 1; i <= doc.numPages; i++) {
+    $('status').textContent = `Lendo ${file.name}: página ${i} de ${doc.numPages}…`;
+    const c = await (await doc.getPage(i)).getTextContent();
+    pages.push(c.items.map(it => ({ str: it.str, x: it.transform[4], y: it.transform[5], w: it.width })));
+  }
+  $('status').textContent = '';
+  return pages;
+}
+const paginasParaTexto = pages => pages.map(items => {
+  const rows = {};
+  for (const it of items) { if (!it.str.trim()) continue; const y = Math.round(it.y / 3) * 3; (rows[y] = rows[y] || []).push(it); }
+  return Object.keys(rows).map(Number).sort((a, b) => b - a).map(y => rows[y].sort((a, b) => a.x - b.x).map(i => i.str.trim()).join(' ')).join('\n');
+}).join('\n');
+const pronto = () => { $('btn-processar').disabled = !(dados.espelho && dados.validacao); };
+const demitidos = () => Object.values(dados.espelho || {}).filter(e => e.rescisao).map(e => e.codigo);
+const ignorar = () => {
+  const lista = $('f-ign').value.split(/[\s,;]+/).filter(Boolean).map(s => s.padStart(6, '0'));
+  return $('f-demit').checked ? lista.concat(demitidos()) : lista;
+};
+
+$('f-espelho').onchange = async e => { const f = e.target.files[0]; if (!f) return;
+  dados.espelho = Motor.lerEspelho(await lerPdf(f));
+  const um = Object.values(dados.espelho)[0]; mesRef = um ? { mes: um.mes, ano: um.ano } : null;
+  $('ok-espelho').textContent = `✓ ${Object.keys(dados.espelho).length} empregados${um ? ' · ' + dd(um.mes) + '/' + um.ano : ''}`; pronto()
+  const dm = Object.values(dados.espelho).filter(x => x.rescisao);
+  $('ok-demit').textContent = dm.length ? `${dm.length} demitido(s): ${dm.map(x => x.nome.split(' ')[0] + ' (' + x.rescisao + ')').join(', ')}` : 'Nenhum demitido no espelho';
+  pronto(); };
+$('f-val').onchange = async e => { const f = e.target.files[0]; if (!f) return;
+  const wb = XLSX.read(await f.arrayBuffer()); const abas = {};
+  wb.SheetNames.forEach(n => abas[n] = XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: false }));
+  dados.validacao = Motor.lerValidacao(abas); $('ok-val').textContent = `✓ ${dados.validacao.length} respostas`; pronto(); };
+$('f-inex').onchange = async e => { const f = e.target.files[0]; if (!f) return;
+  dados.inexistente = Motor.lerBatidaInexistente(paginasParaTexto(await lerPdf(f)));
+  $('ok-inex').textContent = `✓ ${dados.inexistente.length} batidas previstas sem marcação`; };
+$('f-afdt').onchange = async e => { dados.afdt = [];
+  for (const f of e.target.files) dados.afdt.push(...Motor.lerAFDT(await f.text(), /home/i.test(f.name) ? 'HO' : 'gestor'));
+  $('ok-afdt').textContent = `✓ ${dados.afdt.length} batidas`; };
+$('f-traf').onchange = async e => { const f = e.target.files[0]; if (!f) return;
+  const wb = XLSX.read(await f.arrayBuffer()); const ws = wb.Sheets[wb.SheetNames[0]];
+  dados.viagens = Motoristas.lerViagens(XLSX.utils.sheet_to_json(ws, { header: 1, raw: true }));
+  $('ok-traf').textContent = `✓ ${dados.viagens.length} viagens`; };
+$('f-bkp').onchange = async e => { const f = e.target.files[0]; if (!f) return;
+  if (!mesRef) { alert('Carregue primeiro o espelho (para saber o mês).'); e.target.value = ''; return; }
+  $('ok-bkp').textContent = 'Lendo…';
+  dados.backup = await Backup.lerBackupPonto(fflate, f, mesRef, n => $('ok-bkp').textContent = `Lendo… ${Math.round(n / 1048576)} MB`);
+  $('ok-bkp').textContent = `✓ ${Object.keys(dados.backup.batidas).length} dias com batida · ${dados.backup.folgas.size} folgas de escala`; };
+$('f-apoio').onchange = async e => { const f = e.target.files[0]; if (!f) return;
+  dados.apoio = JSON.parse(await f.text());
+  $('ok-apoio').textContent = `✓ ${dados.apoio.licencas.length} licenças · ${dados.apoio.emails.length} e-mails (gerado ${dados.apoio.gerado})`; };
+
+$('btn-processar').onclick = () => {
+  const ign = ignorar(), filial = $('f-filial').value;
+  let lista = Motor.analisar({ espelho: dados.espelho, inexistente: dados.inexistente || [], validacao: dados.validacao, afdt: dados.afdt || [], ignorar: ign });
+  lista = lista.concat(Auditoria.auditar(dados.espelho, { filial, ignorar: ign }));
+  motor3 = null;
+  if (dados.viagens) {
+    motor3 = Motoristas.analisarMotoristas(dados.viagens, dados.espelho, { ...mesRef, ignorar: ign });
+    const ja = new Set(lista.map(i => i.cod + '|' + i.dia + '|' + i.tipo));
+    lista = lista.concat(motor3.itens.filter(i => !ja.has(i.cod + '|' + i.dia + '|' + i.tipo)));
+  }
+  lista = Backup.enriquecer(lista, dados.backup);
+  lista = Backup.aplicarApoio(lista, dados.apoio, mesRef);
+  const ordem = Object.values(Motor.CAT);
+  itens = lista.sort((a, b) => ordem.indexOf(a.cat) - ordem.indexOf(b.cat) || a.cod.localeCompare(b.cod) || a.dia - b.dia);
+  itens.forEach((it, i) => { it.id = i; it.ok = !/^4/.test(it.cat); });
+  $('box-mot').style.display = motor3 ? 'block' : 'none';
+  if (motor3) $('mot-resumo').textContent = motor3.espera.map(m => `${m.nome}: ${Motor.dur(m.carga + m.posto)}`).join(' · ');
+  filtroCat = null; $('resultado').style.display = 'block'; render();
+  $('status').textContent = `✓ ${itens.length} itens.`;
+};
+
+function render() {
+  const cats = Object.values(Motor.CAT);
+  $('resumo').innerHTML = cats.map(c => `<div data-c="${c}" class="${filtroCat === c ? 'ativo' : ''}"><b>${itens.filter(x => x.cat === c).length}</b>${c}</div>`).join('');
+  [...$('resumo').children].forEach(el => el.onclick = () => { filtroCat = filtroCat === el.dataset.c ? null : el.dataset.c; render(); });
+  const q = $('busca').value.toLowerCase();
+  $('tbody').innerHTML = itens.filter(it => (!filtroCat || it.cat === filtroCat) && (!q || JSON.stringify(it).toLowerCase().includes(q))).map(it => `
+    <tr class="c${it.cat[0]}">
+      <td style="text-align:center"><input type="checkbox" data-id="${it.id}" ${it.ok ? 'checked' : ''}></td>
+      <td>${esc(it.cat.slice(3))}</td>
+      <td>${it.cod}<br><small>${esc(it.nome)}</small></td>
+      <td class="mono">${it.dia ? dd(it.dia) + ' ' + it.sem : 'mês'}</td>
+      <td class="mono">${esc(it.espelho)}<br><small>${esc(it.det)}</small>${it.nums ? `<br><small>${esc(it.nums)}</small>` : ''}</td>
+      <td>${esc(it.tipo)}${it.gestor ? `<div class="gestor">Gestor: ${esc(it.gestor)}</div>` : ''}</td>
+      <td>${esc(it.acao)}</td>
+    </tr>`).join('');
+  document.querySelectorAll('#tbody input[type=checkbox]').forEach(cb => cb.onchange = () => { itens[cb.dataset.id].ok = cb.checked; });
+}
+$('busca').oninput = render;
+$('btn-todos').onclick = () => { itens.forEach(i => i.ok = true); render(); };
+$('btn-nenhum').onclick = () => { itens.forEach(i => i.ok = false); render(); };
+
+function baixar(nome, conteudo, tipo = 'text/plain') {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([conteudo], { type: tipo })); a.download = nome; a.click();
+}
+const sufixo = () => `${dd(mesRef.mes)}_${mesRef.ano}_${$('f-filial').value}`;
+$('btn-escala').onclick = () => {
+  const sel = itens.filter(i => i.ok && i.escala);
+  if (!sel.length) return alert('Nenhuma escala aprovada.');
+  baixar(`ESCALA_${sufixo()}.txt`, Motor.arquivoEscala(sel));
+  alert(`Escala única do mês (${sel.length} dia(s), trabalho e folga juntos).\nNo Fortes: excluir a escala do mês que já existir e importar esta com Data Inicial 01/${dd(mesRef.mes)}/${mesRef.ano}.\nDepois marcar os intervalos (S1/E2) das escalas de trabalho.`);
+};
+$('btn-afdt').onclick = () => {
+  const linhas = [];
+  for (const it of itens.filter(i => i.ok && i.afdt)) {
+    const pis = (dados.espelho[it.cod] || {}).pis; if (!pis) continue;
+    for (const h of [].concat(it.afdt)) linhas.push(pis + dd(it.dia) + dd(mesRef.mes) + mesRef.ano + h.replace(':', ''));
+  }
+  if (!linhas.length) return alert('Nenhuma batida aprovada para o AFDT.');
+  baixar(`AFDT_COMPLEMENTAR_${sufixo()}.txt`, linhas.join('\r\n') + '\r\n');
+};
+$('btn-excel').onclick = () => {
+  const wb = XLSX.utils.book_new();
+  for (const c of Object.values(Motor.CAT)) {
+    const rows = itens.filter(i => i.cat === c).map(i => ({ 'Matrícula': i.cod, Nome: i.nome, Dia: i.dia ? dd(i.dia) : 'mês', Semana: i.sem,
+      'Espelho hoje': i.espelho, Detalhe: i.det, 'Números': i.nums || '', 'Situação': i.tipo, 'Resposta do gestor': i.gestor, 'O que fazer': i.acao, Feito: '' }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{ 'Matrícula': '— nada —' }]), c.replace(/[^\w ]/g, '').slice(0, 30));
+  }
+  XLSX.writeFile(wb, `PENDENCIAS_${sufixo()}.xlsx`);
+};
+$('btn-mov3').onclick = async () => {
+  if (!motor3) return;
+  const espera = {}; motor3.espera.forEach(m => espera[m.nome] = m);
+  const lista = motor3.espera.map(m => ({ nome: m.nome, codigo: m.codigo }));
+  for (const c of $('f-motextra').value.split(/[\s,;]+/).filter(Boolean)) {
+    const e = dados.espelho[c.padStart(6, '0')]; if (e && !lista.some(l => l.codigo === e.codigo)) lista.push({ nome: e.nome, codigo: e.codigo });
+  }
+  const r = await Planilhas.movimento3(ExcelJS, { filial: $('f-filial').value, ...mesRef, salario: +$('f-sal').value, lista, espera });
+  baixar(r.nome, r.buffer, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+};
+
+// ───── Intervalos (réplica do site da TI) ─────
+let ti = null;
+const pisNome = () => { const m = {}; for (const e of Object.values(dados.espelho || {})) if (e.pis) m[e.pis.slice(-11)] = e; return m; };
+$('f-ti').onchange = async e => { const f = e.target.files[0]; if (!f) return;
+  ti = LeitorTI.lerAFDTCompleto(await f.text()); ti.jornadas.forEach(j => j.aprovado = false);
+  const c = ti.cab; $('ok-ti').textContent = `✓ ${c.empresa} · CNPJ ${c.cnpj} · ${c.ini.slice(0, 2)}/${c.ini.slice(2, 4)} a ${c.fim.slice(0, 2)}/${c.fim.slice(2, 4)}/${c.fim.slice(4)} · ${ti.jornadas.length} jornadas`;
+  $('ti-acoes').style.display = 'flex'; $('ti-tab').style.display = 'table'; renderTI(); };
+['ti-qtd', 'ti-per', 'ti-so'].forEach(id => $(id).onchange = () => ti && renderTI());
+function tiVisiveis() {
+  const q = $('ti-qtd').value, p = $('ti-per').value, so = $('ti-so').checked, ign = new Set(ignorar()), pn = pisNome();
+  return ti.jornadas.filter(j => (q === 'todas' || (q === 'par') === (j.bat.length % 2 === 0)) && (p === 'todos' || j.turno === p)
+    && (!so || j.correcoes.length) && !(pn[j.pis.slice(-11)] && ign.has(pn[j.pis.slice(-11)].codigo)));
+}
+function renderTI() {
+  const pn = pisNome(), cls = { O: 'b-o', I: 'b-i', P: 'b-p' };
+  $('ti-body').innerHTML = tiVisiveis().map(j => { const i = ti.jornadas.indexOf(j), e = pn[j.pis.slice(-11)];
+    const cel = Array.from({ length: 8 }, (_, k) => { const b = j.bat[k]; return `<td class="mono ${b ? cls[b.fonte] || 'b-x' : ''}">${b ? Motor.fmt(b.h) : ''}</td>`; }).join('');
+    return `<tr><td class="mono">${j.pis}${e ? `<br><small>${e.codigo} ${esc(e.nome)}</small>` : ''}</td><td class="mono">${j.data.slice(0, 2)}/${j.data.slice(2, 4)} ${j.sem}</td>${cel}
+      <td><b>${Motor.dur(j.trab)}</b></td><td>${j.bat.length}</td><td>${j.turno}</td><td>${j.correcoes.map(c => c.h).join(' ; ')}</td>
+      <td style="text-align:center">${j.correcoes.length ? `<input type="checkbox" data-ti="${i}" ${j.aprovado ? 'checked' : ''}>` : ''}</td></tr>`; }).join('');
+  document.querySelectorAll('[data-ti]').forEach(cb => cb.onchange = () => ti.jornadas[cb.dataset.ti].aprovado = cb.checked);
+}
+$('ti-todos').onclick = () => { tiVisiveis().forEach(j => j.aprovado = j.correcoes.length > 0); renderTI(); };
+$('ti-nenhum').onclick = () => { ti.jornadas.forEach(j => j.aprovado = false); renderTI(); };
+$('ti-gerar').onclick = () => {
+  const txt = LeitorTI.gerarTratado(ti.jornadas);
+  if (!txt) return alert('Nenhuma correção aprovada.');
+  baixar(LeitorTI.nomeArquivo(ti.cab, $('f-filial').value), txt);
+};
+</script>
+</body>
+</html>

@@ -575,7 +575,7 @@
         <button class="empresa-btn gblog" id="btn-gblog" onclick="setEmpresa('GBLOG')">GBLOG</button>
       </div>
       <span class="topbar-user">Olá, <strong id="topbar-nome">—</strong></span>
-      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v89</span>
+      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v90</span>
       <button class="btn-ghost" onclick="trocarMinhaSenha()" title="Trocar minha senha">🔑</button>
       <button class="btn-ghost" onclick="doLogout()">Sair</button>
     </div>
@@ -592,6 +592,7 @@
     <button class="tab-btn hidden" id="tab-btn-cadastros" onclick="switchTab('cadastros')"><span class="tab-icon">👥</span><span class="tab-label">Cadastros</span><span class="tab-tooltip">Cadastros</span></button>
     <button class="tab-btn hidden" id="tab-btn-validacao" onclick="switchTab('validacao')"><span class="tab-icon">✅</span><span class="tab-label">Validação &amp; AFDT</span><span class="tab-tooltip">Validação &amp; AFDT</span></button>
     <button class="tab-btn hidden" id="tab-btn-auditoria" onclick="switchTab('auditoria')"><span class="tab-icon">🔍</span><span class="tab-label">Auditoria</span><span class="tab-tooltip">Auditoria</span></button>
+    <button class="tab-btn hidden" id="tab-btn-fechamento" onclick="window.open('fechamento/', '_blank')"><span class="tab-icon">🧪</span><span class="tab-label">Fechamento (teste)</span><span class="tab-tooltip">Fechamento (teste)</span></button>
     <button class="tab-btn hidden" id="tab-btn-relogio" onclick="switchTab('relogio')"><span class="tab-icon">🕐</span><span class="tab-label">Bater Ponto</span><span class="tab-tooltip">Bater Ponto</span></button>
     <button class="tab-btn hidden" id="tab-btn-batidas" onclick="switchTab('batidas')"><span class="tab-icon">📋</span><span class="tab-label">Meus Lançamentos (HO)</span><span class="tab-tooltip">Meus Lançamentos (HO)</span></button>
   </div>
@@ -1727,7 +1728,7 @@ function iniciarApp() {
   //   - relogio/batidas: somente perfil empregado (sempre ocultas aqui)
   const visibilidade = {
     pendencias: true, lancamento: true, meus: true, jornadas: true,
-    validacao: isAdmin, auditoria: isAdmin, cadastros: isAdmin,
+    validacao: isAdmin, auditoria: isAdmin, cadastros: isAdmin, fechamento: isAdmin,
     relogio: false, batidas: false
   };
   document.querySelectorAll('.tabs-nav .tab-btn').forEach(b => {
