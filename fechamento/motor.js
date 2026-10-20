@@ -168,22 +168,51 @@
       return { ps, c };
     };
 
-    // 0) turno da noite o mês todo com jornada diurna cadastrada → troca de jornada (um item só)
+    // 0) dias trabalhados fora do horário cadastrado (regra do Breno: muitos dias = troca de jornada; poucos = escala)
+    const escalaDeslocada = (e, d, ini) => {
+      const { c } = cargaDoDia(e, d.sem);
+      if (!c) return null;
+      const itv = intervalo(c), meio = Math.floor(c / 2);
+      return itv ? [ini, ini + meio, ini + meio + itv, ini + c + itv] : [ini, ini + c];
+    };
+    const reaisDoDia = (e, d) => {                         // batidas sem as pré-assinaladas do intervalo
+      const ps = (e.prevSem[d.sem] || []).map(hm), pre = new Set(ps.slice(1, -1));
+      return d.bat.filter(b => !pre.has(b));
+    };
     for (const [cod, e] of Object.entries(espelho)) {
       if (ign.has(cod)) continue;
-      const e1 = hm((e.prevSem.SEG || [])[0]);
-      if (e1 === null || e1 >= 720) continue;
-      const noites = Object.values(e.dias).filter(d => d.bat.filter(b => b >= 1140 || b <= 180).length >= 2).map(d => d.num);
-      if (noites.length >= 5) {
-        add(CAT.VOCE, cod, noites[0], 'Turno da noite com jornada diurna', `Trabalhou à noite em ${noites.length} dias (${noites.map(dd).join(', ')}), mas a jornada cadastrada começa ${fmt(e1)}. Trocar a jornada para noturna no Fortes Pessoal e reprocessar; depois desconsiderar batidas do gestor que sobrarem.`, {});
+      const trabalhados = Object.values(e.dias).filter(d => d.bat.length);
+      const noturnos = [], tarde = [];
+      for (const d of trabalhados) {
+        if (/FERIADO|LICEN|F[ÉE]RIAS|AFAST/.test(d.det)) continue;
+        const ps = (e.prevSem[d.sem] || []).map(hm); if (ps.length < 2) continue;
+        const reais = reaisDoDia(e, d); if (!reais.length) continue;
+        const primeira = reais[0];
+        // turno da noite = batida à noite (18h–24h) seguida de batida de madrugada (0h–4h); com jornada diurna cadastrada
+        const noite = reais.find(t => t >= 1080), madrugada = reais.some(t => t <= 240 && noite !== undefined && reais.indexOf(t) > reais.indexOf(noite));
+        if (ps[0] < 720 && noite !== undefined && madrugada) { d._ini = noite; noturnos.push(d); }
+        else if (primeira >= ps[1] && primeira < 1080 && ps[0] < ps[1] - 120) { d._ini = primeira; tarde.push(d); }   // entrou depois da 1a saída prevista
+      }
+      if (noturnos.length && noturnos.length >= Math.max(5, 0.7 * trabalhados.length)) {
+        add(CAT.VOCE, cod, noturnos[0].num, 'Turno da noite o mês todo', `Entrou à noite em ${noturnos.length} de ${trabalhados.length} dias trabalhados, mas a jornada cadastrada é diurna. Trocar a jornada para noturna no Fortes Pessoal e reprocessar; depois desconsiderar batidas do gestor que sobrarem.`, {});
         for (const n of Object.keys(e.dias)) marca(cod, +n);
-        ign.add(cod);
+        ign.add(cod); continue;
+      }
+      for (const d of [...noturnos, ...tarde]) {
+        const ini = d._ini, bat = escalaDeslocada(e, d, ini);
+        if (!bat) continue;
+        const g = txtResp(cod, d.num), noite = noturnos.includes(d);
+        const limite = bat[bat.length - 1] >= 1440 ? Math.ceil((bat[bat.length - 1] % 1440 + 40) / 60) * 60 : null;
+        add(CAT.IMPORTAR, cod, d.num, noite ? 'Trabalhou à noite (jornada diurna)' : 'Dia deslocado (entrou à tarde)',
+          `Escala do mês: ${bat.map(fmt).join(' / ')}${limite !== null ? ', Limite ' + fmt(limite) : ''} (carga ${dur(cargaDoDia(e, d.sem).c)}, a partir da entrada real ${fmt(ini)}). Desconsiderar as pré-assinaladas do dia. Marcar o intervalo depois.`,
+          { gestor: g, escala: { tipo: 'X', bat, limite } });
+        marca(cod, d.num);
       }
     }
 
     // 1) respostas do gestor
     for (const r of validacao) {
-      const e = espelho[r.cod]; if (!e || ign.has(r.cod)) continue;
+      const e = espelho[r.cod]; if (!e || ign.has(r.cod) || tratado.has(r.cod + "|" + r.dia)) continue;
       const d = e.dias[r.dia] || { bat: [], det: '' };
       const g = txtResp(r.cod, r.dia);
       const temTurno = d.bat.length >= 2;
