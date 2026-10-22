@@ -45,7 +45,10 @@
       for (const n of ns) {
         let dia = n.dia;
         const ant = porData[dia - 1] || [], hoje = porData[dia] || [];
-        if (!n.fixo && n.t < 720 && ant.some(b => b.t >= 1080) && !hoje.some(b => b.t >= 720 && b.t < 1080)) dia = dia - 1;
+        // turno da noite = o turno do dia anterior COMEÇOU à noite (1ª batida da linha do Fortes, ou jornada noturna)
+        const dAnt = e.dias[dia - 1], psAnt = dAnt ? (e.prevSem[dAnt.sem] || []).map(hm) : [];
+        const comecouNoite = (ant[0] && ant[0].t >= 1080) || (psAnt[0] !== undefined && psAnt[0] >= 1080);
+        if (!n.fixo && n.t < 720 && comecouNoite && !hoje.some(b => b.t >= 720 && b.t < 1080)) dia = dia - 1;
         if (naoInserir.has(chave(cod, dia) + '|' + n.t) || naoInserir.has(chave(cod, n.dia) + '|' + n.t)) continue;
         const lst = porData[dia] = porData[dia] || [];
         const igual = lst.find(b => Math.abs(b.t - n.t) <= 1);
@@ -113,14 +116,15 @@
   function intervalosTI(sim, { comTrafego = new Set() } = {}) {
     const itens = [];
     for (const e of Object.values(sim)) for (const d of Object.values(e.dias)) {
-      if (comTrafego.has(e.codigo + '|' + d.num) || d.trab === null || !d.bats.length) continue;
-      const ini = d.bats[0].r, fim = d.bats[d.bats.length - 1].r;
+      // feriado tem regra própria (motor: intervalo de feriado sem escala); dias sem cálculo ficam de fora
+      if (comTrafego.has(e.codigo + '|' + d.num) || d.trab === null || !d.bats.length || d.feriado) continue;
+      const ini = d.bats[0].r, fim = d.bats[d.bats.length - 1].r, iniRelogio = d.bats[0].t;
       const base = { cat: CAT.IMPORTAR, cod: e.codigo, nome: e.nome, dia: d.num, sem: d.sem, espelho: d.antes, det: d.det, gestor: '', origemAfdt: 'intervalo (regra TI)' };
       if ((d.sem === 'SAB' || d.sem === 'DOM') && d.bats.length === 2) {
         const itv = d.trab > 480 ? 60 : d.trab > 360 ? 30 : 0; if (!itv) continue;
         let s = 720; if (s <= ini || s + itv >= fim) s = Math.floor((ini + fim - itv) / 2);
         itens.push({ ...base, tipo: 'Intervalo de sábado/domingo', acao: `Trabalhou ${dur(d.trab)} sem intervalo: AFDT ${fmt(s)} e ${fmt(s + itv)} (regra da TI: >6h 30 min, >8h 1h).`, afdt: [fmt(s), fmt(s + itv)] });
-      } else if (d.sem !== 'SAB' && d.sem !== 'DOM' && ini >= 240 && ini <= 720 && fim > 1320) {
+      } else if (d.sem !== 'SAB' && d.sem !== 'DOM' && iniRelogio >= 240 && iniRelogio <= 720 && fim - ini + iniRelogio > 1320) {
         const auto = d.bats.filter(b => b.origem === 'automática').map(b => fmt(b.t));
         itens.push({ ...base, tipo: 'Janta (jornada até depois das 22h)', acao: `Começou de manhã e saiu ${fmt(fim)}: AFDT janta 19:00 e 19:30${auto.length ? ' + automáticas ' + auto.join(', ') : ''} (regra da TI).`, afdt: [...auto, '19:00', '19:30'] });
       }

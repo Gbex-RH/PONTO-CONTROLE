@@ -160,7 +160,9 @@
     const noturnoAnterior = (e, dia, h, extra = []) => {
       const ant = (e.dias[dia - 1] || {}).bat || [];
       const hoje = (e.dias[dia] || {}).bat || [];
-      return h < 720 && [...ant, ...extra].some(b => b >= 1080) && !hoje.some(b => b >= 720);
+      const dAnt = e.dias[dia - 1], psAnt = dAnt ? (e.prevSem[dAnt.sem] || []).map(hm) : [];
+      const comecouNoite = (ant[0] !== undefined && ant[0] >= 1080) || (psAnt[0] !== undefined && psAnt[0] >= 1080) || (!ant.length && extra.some(b => b >= 1080));
+      return h < 720 && comecouNoite && !hoje.some(b => b >= 720);
     };
     const cargaDoDia = (e, sem) => {
       const ps = (e.prevSem[sem] || []).map(hm);
@@ -357,7 +359,9 @@
           if (b.length % 2) add(CAT.GESTOR, cod, dia, 'Feriado sem saída', 'Qual o horário de saída?', { gestor: g });
           else if (b.length === 2) {
             const t = (b[1] - b[0] + 1440) % 1440, itv = intervalo(t);
-            if (itv) add(CAT.IMPORTAR, cod, dia, 'Feriado sem intervalo', `AFDT: intervalo ${itv} min (ex.: 12:00/${fmt(720 + itv)}). Sem escala — PREV fica zerada.`, { afdt: ['12:00', fmt(720 + itv)] });
+            const ini = b[0], fim = b[0] + t; let s0 = 720;
+            if (s0 <= ini || s0 + itv >= fim) s0 = Math.floor((ini + fim - itv) / 2);       // 12:00 se couber; senão no meio do dia
+            if (itv) add(CAT.IMPORTAR, cod, dia, 'Feriado sem intervalo', `Trabalhou ${dur(t)} no feriado sem intervalo: AFDT ${fmt(s0)} e ${fmt(s0 + itv)}. Sem escala — a PREV do feriado fica zerada.`, { afdt: [fmt(s0), fmt(s0 + itv)] });
           }
           marca(cod, dia); continue;
         }

@@ -8,13 +8,13 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-<script src="motor.js"></script>
-<script src="auditoria.js"></script>
-<script src="motoristas.js"></script>
-<script src="planilhas.js"></script>
-<script src="backup.js"></script>
-<script src="ti.js"></script>
-<script src="simulacao.js"></script>
+<script src="motor.js?v=20261022"></script>
+<script src="auditoria.js?v=20261022"></script>
+<script src="motoristas.js?v=20261022"></script>
+<script src="planilhas.js?v=20261022"></script>
+<script src="backup.js?v=20261022"></script>
+<script src="ti.js?v=20261022"></script>
+<script src="simulacao.js?v=20261022"></script>
 <style>
   :root { --azul:#1f4e78; --borda:#d6dde6; --fundo:#f5f6f8; }
   body { font-family: Segoe UI, Arial, sans-serif; background: var(--fundo); margin: 0; color: #1b2b3a; }
@@ -115,7 +115,7 @@
       <button class="sec" id="btn-nenhum">Desmarcar todos</button>
       <span style="flex:1"></span>
       <button id="btn-escala">Escala do mês (.txt)</button>
-      <button id="btn-afdt">AFDT complementar (.txt)</button>
+      <button id="btn-afdt">AFDT do mês (.txt)</button>
       <button id="btn-excel">Planilha de pendências (.xlsx)</button>
       <button id="btn-zip" style="background:#2e7d32">📦 Baixar tudo (.zip)</button>
     </div>
@@ -266,13 +266,21 @@ const sufixo = () => `${dd(mesRef.mes)}_${mesRef.ano}_${$('f-filial').value}`;
 // ── conteúdo de cada arquivo (usado pelos botões individuais e pelo zip) ──
 const instrEscala = () => `Escala única do mês (trabalho e folga juntos).\nNo Fortes: excluir a escala do mês que já existir e importar esta com Data Inicial 01/${dd(mesRef.mes)}/${mesRef.ano}.\nDepois marcar os intervalos (S1/E2) das escalas de trabalho.`;
 function gerarEscala() { const sel = itens.filter(i => i.ok && i.escala); return sel.length ? { nome: `ESCALA_${sufixo()}.txt`, dados: Motor.arquivoEscala(sel) } : null; }
+// AFDT ÚNICO do mês: tudo o que está no espelho simulado e ainda não está no espelho do Fortes
+// (batidas do gestor e do home office + as que a ferramenta gerou), já sem as que não devem entrar.
 function gerarAFDT() {
-  const linhas = [];
-  for (const it of itens.filter(i => i.ok && i.afdt)) {
-    const pis = (dados.espelho[it.cod] || {}).pis; if (!pis) continue;
-    for (const h of [].concat(it.afdt)) linhas.push(pis + dd(it.dia) + dd(mesRef.mes) + mesRef.ano + h.replace(':', ''));
+  if (!sim) return null;
+  const linhas = new Set(), ult = new Date(mesRef.ano, mesRef.mes, 0).getDate();
+  for (const e of Object.values(sim)) {
+    const pis = (dados.espelho[e.codigo] || {}).pis; if (!pis) continue;
+    for (const d of Object.values(e.dias)) for (const b of d.bats) {
+      if (b.origem === 'espelho' || b.origem === 'automática') continue;
+      let dia = d.num, mes = mesRef.mes, ano = mesRef.ano;
+      if (b.r >= 1440) { dia++; if (dia > ult) { dia = 1; mes++; if (mes > 12) { mes = 1; ano++; } } }   // madrugada do turno da noite
+      linhas.add(pis.slice(-11) + dd(dia) + dd(mes) + ano + Motor.fmt(b.t).replace(':', ''));
+    }
   }
-  return linhas.length ? { nome: `AFDT_COMPLEMENTAR_${sufixo()}.txt`, dados: linhas.join('\r\n') + '\r\n' } : null;
+  return linhas.size ? { nome: `AFDT_${sufixo()}.txt`, dados: [...linhas].join('\r\n') + '\r\n' } : null;
 }
 function gerarPendencias() {
   const wb = XLSX.utils.book_new();
@@ -307,7 +315,7 @@ $('btn-zip').onclick = async () => {
   por(gerarEscala(), '1_IMPORTAR/'); por(gerarAFDT(), '1_IMPORTAR/'); por(gerarTI(), '1_IMPORTAR/');
   por(gerarPendencias(), ''); por(await gerarMov3(), '');
   const leia = ['FECHAMENTO ' + sufixo(), '', 'Arquivos:', ...lista.map(n => ' - ' + n), '', instrEscala(),
-    '', 'AFDT: importar no Fortes Ponto o AFDT do app (gestores e home office) E o AFDT_COMPLEMENTAR deste zip (intervalos de sábado/janta, viagens, feriado e batidas que faltavam).', 'Depois tratar a planilha de pendências (abas "Você corrige" e "Cobrar do gestor").',
+    '', 'AFDT: importar no Fortes Ponto SÓ o AFDT deste zip. Ele já tem tudo: batidas informadas pelo gestor e do home office, intervalos de sábado/janta, viagens e feriado (sem as batidas que não devem entrar). NÃO importar o AFDT do app separado.', 'Depois tratar a planilha de pendências (abas "Você corrige" e "Cobrar do gestor").',
     'No fim, gerar o espelho novo e processar de novo na ferramenta para conferir.'].join('\r\n');
   arqs['LEIA-ME.txt'] = enc.encode(leia);
   baixar(`FECHAMENTO_${sufixo()}.zip`, fflate.zipSync(arqs), 'application/zip');
