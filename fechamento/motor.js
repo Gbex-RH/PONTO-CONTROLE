@@ -199,12 +199,32 @@
         ign.add(cod); continue;
       }
       for (const d of [...noturnos, ...tarde]) {
-        const ini = d._ini, bat = escalaDeslocada(e, d, ini);
-        if (!bat) continue;
         const g = txtResp(cod, d.num), noite = noturnos.includes(d);
-        const limite = bat[bat.length - 1] >= 1440 ? Math.ceil((bat[bat.length - 1] % 1440 + 40) / 60) * 60 : null;
-        add(CAT.IMPORTAR, cod, d.num, noite ? 'Trabalhou à noite (jornada diurna)' : 'Dia deslocado (entrou à tarde)',
-          `Escala do mês: ${bat.map(fmt).join(' / ')}${limite !== null ? ', Limite ' + fmt(limite) : ''} (carga ${dur(cargaDoDia(e, d.sem).c)}, a partir da entrada real ${fmt(ini)}). Desconsiderar as pré-assinaladas do dia. Marcar o intervalo depois.`,
+        let ini = d._ini;
+        let reais = reaisDoDia(e, d).filter(t => !noite || t >= ini || t <= 360);
+        // batida original prevalece: entrada informada pelo gestor até 1h antes de uma batida original → vale a original
+        const doGestor = new Set((resp[cod + '|' + d.num] || []).filter(x => x.hora).map(x => hm(x.hora)));
+        const descGestor = [];
+        if (doGestor.has(reais[0]) && reais[1] !== undefined && !doGestor.has(reais[1]) && reais[1] - reais[0] <= 60) {
+          descGestor.push(reais[0]); reais = reais.slice(1); ini = reais[0];
+        }
+        const tipo = noite ? 'Trabalhou à noite (jornada diurna)' : 'Dia deslocado (entrou à tarde)';
+        const respTipos = (resp[cod + '|' + d.num] || []).map(r => r.tipo);
+        // com uma batida só não dá para saber o dia; e se o gestor disse falta/folga, a resposta contradiz o ponto
+        if (reais.length < 2) { add(CAT.GESTOR, cod, d.num, tipo, `Só há a batida ${fmt(ini)}. Qual foi o horário de entrada e de saída neste dia?`, { gestor: g }); marca(cod, d.num); continue; }
+        if (respTipos.some(t => t === 'FALTA' || t === 'FOLGA')) { add(CAT.GESTOR, cod, d.num, tipo, `O gestor informou ${respTipos.join('/').toLowerCase()}, mas há batidas (${reais.map(fmt).join(', ')}). Confirmar com o gestor o horário real antes de criar escala.`, { gestor: g }); marca(cod, d.num); continue; }
+        const { c } = cargaDoDia(e, d.sem);
+        const fimReal = reais[reais.length - 1];
+        // dia real de até 6h (regra de intervalo: até 6h não tem intervalo) = escala da carga prevista em 2 batidas;
+        // as batidas que sobram no meio são desconsideradas. Acima de 6h, escala de 4 batidas com o intervalo da regra.
+        const duas = reais.length < 4 && ((fimReal - ini + 1440) % 1440) <= 360;
+        const bat = duas ? [ini, ini + c] : escalaDeslocada(e, d, ini);
+        if (!bat || !c) continue;
+        const sobra = [...descGestor, ...(duas ? reais.filter(t => t !== ini && t !== fimReal) : [])];
+        const fimEsc = bat[bat.length - 1];
+        const limite = fimEsc >= 1440 ? Math.ceil((fimEsc % 1440 + 40) / 60) * 60 : null;
+        add(CAT.IMPORTAR, cod, d.num, tipo,
+          `Escala do mês: ${bat.map(fmt).join(' / ')}${limite !== null ? ', Limite ' + fmt(limite) : ''} (carga ${dur(c)}${duas ? ' em 2 batidas, sem intervalo real no dia' : ''}, entrada ${fmt(ini)}${duas ? ', saída ' + fmt(fimReal) : ''}). Desconsiderar as pré-assinaladas do dia${sobra.length ? ' e a(s) batida(s) ' + sobra.map(fmt).join(', ') + ' (informada pelo gestor ou sobrando no par)' : ''}.${duas ? '' : ' Marcar o intervalo depois.'}`,
           { gestor: g, escala: { tipo: 'X', bat, limite } });
         marca(cod, d.num);
       }
@@ -243,6 +263,7 @@
       if (naoAfdt) add(CAT.IMPORTAR, r.cod, r.dia, 'Batida informada fora do AFDT', `Incluir ${r.hora} no AFDT.`, { gestor: g, afdt: r.hora });
       if (r.status !== 'Confirmado') add(CAT.VOCE, r.cod, r.dia, 'Lançamento ainda Pendente', `Confirmar ${r.hora} na Validação.`, { gestor: g });
       // entrada informada bem depois do previsto e sem batidas antes = dia deslocado → escala
+      if (tratado.has(r.cod + '|' + r.dia)) continue;          // dia já resolvido pela análise do espelho
       const { ps, c } = cargaDoDia(e, d.sem);
       const lanc = (resp[r.cod + '|' + r.dia] || []).filter(x => x.hora).map(x => hm(x.hora));
       if (ps.length > 1 && h === Math.min(...lanc) && h >= ps[1] && !d.bat.some(b => b < h - 5) && !noturnoAnterior(e, r.dia, h) && !/FERIADO/.test(d.det)) {
@@ -280,6 +301,8 @@
       const g = txtResp(r.cod, r.dia), o = String(r.obs).toLowerCase();
       const fechado = d.bat.length >= 2 && d.bat.length % 2 === 0 && !/AUS/.test(d.det);
       if (/feriado/.test(o)) continue;
+      const confirma = [['f[ée]rias', 'F[ÉE]RIAS'], ['folga', 'FOLGA'], ['licen|atestad', 'LICEN|ATEST|AFAST'], ['feriado', 'FERIADO']].some(([t, dz]) => new RegExp(t).test(o) && new RegExp(dz).test(d.det));
+      if (confirma) { marca(r.cod, r.dia); continue; }   // texto do gestor só confirma o que o espelho já mostra
       if (fechado && !/noite|noturn|hospital|doente|n[ãa]o trabalhou/.test(o)) { marca(r.cod, r.dia); continue; }  // texto só confirma o horário
       let acao = 'Ler a observação e decidir.', extra = { gestor: g };
       if (/curso/.test(o) || (!d.bat.length && /aprendiz/.test(o))) acao = 'Aprendiz: confirmar com o gestor se foi curso e justificar a falta.';
@@ -304,6 +327,10 @@
       if (ign.has(cod)) continue;
       for (const [k, d] of Object.entries(e.dias)) {
         const dia = +k, b = d.bat, g = txtResp(cod, dia), fer = /FERIADO/.test(d.det);
+        if (/F[ÉE]RIAS/.test(d.det) && b.length && !tratado.has(cod + '|' + dia)) {
+          add(CAT.VOCE, cod, dia, 'Batida em dia de férias', `Batida(s) ${b.map(fmt).join(', ')} em dia de férias. Conferir: desconsiderar a batida ou corrigir o período de férias.`, { gestor: g });
+          marca(cod, dia); continue;
+        }
         if (tratado.has(cod + '|' + dia)) continue;
         // batida duplicada (≤15 min): desconsiderar a que dá menos prejuízo (entrada: fica a mais cedo; saída: fica a mais tarde)
         const lancDia = new Set((resp[cod + '|' + dia] || []).filter(x => x.hora).map(x => hm(x.hora)));

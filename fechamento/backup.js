@@ -15,7 +15,7 @@
     function linha(l) {
       if (l[0] === '[' && l[l.length - 1] === ']' && l.indexOf(':') < 0) { tab = l.slice(1, -1); cab = null; return; }
       if (!TABELAS.has(tab)) return;
-      if (!cab) { cab = l.slice(1, -1).split(';').map(c => c.split(':')[0]); return; }
+      if (!cab) { cab = l.slice(1, -1).split(';').map(c => c.split(':')[0].toUpperCase()); return; }   // GBLOG grava os nomes em caixa mista
       const p = l.split('|'), v = {}; cab.forEach((c, i) => v[c] = p[i]);
       if (tab === 'EPG') { r.empregados[v.CODIGO] = { pis: v.PIS, nome: v.NOME }; return; }
       const data = v.DATAHORA || v.BTP_PREVISTA || v.DATA || '';
@@ -62,9 +62,14 @@
     return itens.filter(it => {
       const k = it.cod + '|' + it.dia;
       if (it.escala && it.escala.tipo === 'F' && bk.folgas.has(k)) return false;              // folga já está no Fortes
+      if (it.escala && it.escala.tipo === 'X' && bk.escalas[k]) {
+        const fmt = v => String(Math.floor(((v % 1440) + 1440) % 1440 / 60)).padStart(2, '0') + ':' + String(((v % 1440) + 1440) % 1440 % 60).padStart(2, '0');
+        const sug = []; for (let i = 0; i + 1 < it.escala.bat.length; i += 2) sug.push(fmt(it.escala.bat[i]) + '-' + fmt(it.escala.bat[i + 1]));
+        if (sug.join(' / ') === bk.escalas[k].join(' / ')) { it.cat = '4. Conferido — sem ação'; it.acao = `Escala já importada no Fortes (${sug.join(' / ')}).`; delete it.escala; return true; }
+      }
       if (it.escala && it.escala.tipo === 'X' && bk.escalas[k]) it.acao += ` ⚠ Já existe escala neste dia no Fortes (${bk.escalas[k].join(' / ')}): conferir antes de importar.`;
       const bs = bk.batidas[k];
-      if (bs && /duplicada|a mais|isolada/i.test(it.tipo)) it.acao += ` Origem no Fortes: ${bs.map(b => b.hora + ' ' + b.origem).join(', ')}.`;
+      if (bs && /duplicada|a mais|isolada|deslocado|noite/i.test(it.tipo)) it.acao += ` Origem no Fortes: ${bs.map(b => b.hora + ' ' + b.origem).join(', ')}.`;
       if (bk.pre[k] && /faltando|antecipada|duplicada/i.test(it.tipo)) it.acao += ` Pré-assinaladas: ${bk.pre[k].join(', ')}.`;
       return true;
     });
