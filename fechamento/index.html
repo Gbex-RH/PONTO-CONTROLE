@@ -14,6 +14,7 @@
 <script src="planilhas.js"></script>
 <script src="backup.js"></script>
 <script src="ti.js"></script>
+<script src="simulacao.js"></script>
 <style>
   :root { --azul:#1f4e78; --borda:#d6dde6; --fundo:#f5f6f8; }
   body { font-family: Segoe UI, Arial, sans-serif; background: var(--fundo); margin: 0; color: #1b2b3a; }
@@ -74,15 +75,15 @@
   </div>
 
   <div class="card">
-    <h3>Arquivos do mês</h3>
+    <h3>Arquivos do mês — tudo como está, ANTES de importar ou corrigir qualquer coisa</h3>
     <div class="arquivos">
       <div><label>1. Espelho de ponto (PDF) *</label><small>Fortes Ponto, leiaute detalhado, filial inteira</small><input type="file" id="f-espelho" accept=".pdf"><div class="ok" id="ok-espelho"></div></div>
       <div><label>2. Respostas dos gestores (Excel) *</label><small>App → Validação → Exportar Excel</small><input type="file" id="f-val" accept=".xlsx"><div class="ok" id="ok-val"></div></div>
-      <div><label>3. Relatório "Batida Inexistente" (PDF)</label><small>Ponto para Controle Diário</small><input type="file" id="f-inex" accept=".pdf"><div class="ok" id="ok-inex"></div></div>
+      <div><label>Relatório "Batida Inexistente" (PDF) — opcional</label><small>Não é necessário: o espelho e o backup já mostram o que falta</small><input type="file" id="f-inex" accept=".pdf"><div class="ok" id="ok-inex"></div></div>
       <div><label>4. AFDT do app (.txt)</label><small>Gestores e home office (pode escolher os dois)</small><input type="file" id="f-afdt" accept=".txt" multiple><div class="ok" id="ok-afdt"></div></div>
       <div><label>5. Planilha de viagens do tráfego</label><small>Só se a filial tem motoristas (.xlsb)</small><input type="file" id="f-traf" accept=".xlsb,.xlsx"><div class="ok" id="ok-traf"></div></div>
       <div><label>6. Backup do Fortes Ponto (.zip)</label><small>Origem das batidas, folgas e escalas já existentes (~30 s)</small><input type="file" id="f-bkp" accept=".zip"><div class="ok" id="ok-bkp"></div></div>
-      <div><label>7. Apoio de atestados (.json)</label><small>Gerado por <code>apoio_atestados.py</code> (Fortes Pessoal + e-mail)</small><input type="file" id="f-apoio" accept=".json"><div class="ok" id="ok-apoio"></div></div>
+      <div><label>7. Apoio de atestados (.json)</label><small>Gerado por <code>apoio_atestados.py</code> — avisa quem mandou atestado por e-mail</small><input type="file" id="f-apoio" accept=".json"><div class="ok" id="ok-apoio"></div></div>
     </div>
     <div style="margin-top:14px"><button id="btn-processar" disabled>Processar</button><span id="status"></span></div>
   </div>
@@ -116,12 +117,30 @@
       <button id="btn-escala">Escala do mês (.txt)</button>
       <button id="btn-afdt">AFDT complementar (.txt)</button>
       <button id="btn-excel">Planilha de pendências (.xlsx)</button>
+      <button id="btn-zip" style="background:#2e7d32">📦 Baixar tudo (.zip)</button>
     </div>
     <details id="box-mot" style="display:none" class="card"><summary>Motoristas — Movimento 3 (tempo de espera)</summary>
       <div class="barra">Salário base: <input type="number" id="f-sal" value="3166.34" step="0.01" style="width:110px">
         Motoristas sem viagem no mês (opcional): <input type="text" id="f-motextra" placeholder="matrículas" style="width:220px">
         <button id="btn-mov3">Baixar planilha do Movimento 3</button></div>
       <div id="mot-resumo" class="gestor"></div>
+    </details>
+    <details class="card" id="box-sim" open>
+      <summary>Espelho simulado — como o ponto deve ficar depois de importar e corrigir</summary>
+      <div class="barra">
+        <input type="text" id="sim-busca" placeholder="Nome ou matrícula" style="width:220px">
+        <label><input type="checkbox" id="sim-so" checked> Só dias que mudam ou ainda têm pendência</label>
+        <span id="sim-resumo" class="gestor"></span>
+      </div>
+      <div class="gestor">Batidas: <b>preto</b> espelho · <span class="b-i">azul</span> gestor/home office/ferramenta · <span class="b-p">cinza</span> automática (pré-assinalada). Cálculo com tolerância de 10 min; o oficial continua sendo o do Fortes.</div>
+      <div style="max-height:560px;overflow:auto;margin-top:8px"><table>
+        <thead><tr><th>Matrícula / Nome</th><th>Dia</th><th>Espelho hoje</th><th>Como deve ficar</th><th>Escala</th><th>Prev.</th><th>Trab.</th><th>H.Extra</th><th>AT/SA</th><th>Situação</th></tr></thead>
+        <tbody id="sim-body"></tbody></table></div>
+      <div class="barra" style="margin-top:10px">
+        <b>Conferência:</b> depois de importar tudo, envie o espelho NOVO do Fortes
+        <input type="file" id="f-conf" accept=".pdf"> <span class="ok" id="ok-conf"></span>
+      </div>
+      <div id="conf-res"></div>
     </details>
     <table>
       <thead><tr><th>Aprovar</th><th>Grupo</th><th>Matrícula / Nome</th><th>Dia</th><th>Espelho hoje</th><th>Situação</th><th>O que fazer</th></tr></thead>
@@ -189,7 +208,7 @@ $('f-bkp').onchange = async e => { const f = e.target.files[0]; if (!f) return;
   $('ok-bkp').textContent = `✓ ${Object.keys(dados.backup.batidas).length} dias com batida · ${dados.backup.folgas.size} folgas de escala`; };
 $('f-apoio').onchange = async e => { const f = e.target.files[0]; if (!f) return;
   dados.apoio = JSON.parse(await f.text());
-  $('ok-apoio').textContent = `✓ ${dados.apoio.licencas.length} licenças · ${dados.apoio.emails.length} e-mails (gerado ${dados.apoio.gerado})`; };
+  $('ok-apoio').textContent = `✓ ${dados.apoio.emails.length} e-mails de atestado (gerado ${dados.apoio.gerado})`; };
 
 $('btn-processar').onclick = () => {
   const ign = ignorar(), filial = $('f-filial').value;
@@ -202,10 +221,17 @@ $('btn-processar').onclick = () => {
     lista = lista.concat(motor3.itens.filter(i => !ja.has(i.cod + '|' + i.dia + '|' + i.tipo)));
   }
   lista = Backup.enriquecer(lista, dados.backup);
+  // espelho simulado (1ª passada) → intervalos de sábado/domingo e janta pelas regras da TI → simulação final
+  lista.forEach(i => i.ok = !/^4/.test(i.cat));
+  const comTrafego = new Set(lista.filter(i => i.trafego).map(i => i.cod + '|' + i.dia));
+  const sim1 = Simulacao.simular({ espelho: dados.espelho, itens: lista, afdt: dados.afdt || [], ignorar: ign });
+  lista = lista.concat(Simulacao.intervalosTI(sim1, { comTrafego }));
+  lista = Simulacao.filtrarResolvidos(lista, Simulacao.simular({ espelho: dados.espelho, itens: lista, afdt: dados.afdt || [], ignorar: ign }));
   lista = Backup.aplicarApoio(lista, dados.apoio, mesRef);
   const ordem = Object.values(Motor.CAT);
   itens = lista.sort((a, b) => ordem.indexOf(a.cat) - ordem.indexOf(b.cat) || a.cod.localeCompare(b.cod) || a.dia - b.dia);
   itens.forEach((it, i) => { it.id = i; it.ok = !/^4/.test(it.cat); });
+  atualizarSimulacao();
   $('box-mot').style.display = motor3 ? 'block' : 'none';
   if (motor3) $('mot-resumo').textContent = motor3.espera.map(m => `${m.nome}: ${Motor.dur(m.carga + m.posto)}`).join(' · ');
   filtroCat = null; $('resultado').style.display = 'block'; render();
@@ -237,39 +263,54 @@ function baixar(nome, conteudo, tipo = 'text/plain') {
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([conteudo], { type: tipo })); a.download = nome; a.click();
 }
 const sufixo = () => `${dd(mesRef.mes)}_${mesRef.ano}_${$('f-filial').value}`;
-$('btn-escala').onclick = () => {
-  const sel = itens.filter(i => i.ok && i.escala);
-  if (!sel.length) return alert('Nenhuma escala aprovada.');
-  baixar(`ESCALA_${sufixo()}.txt`, Motor.arquivoEscala(sel));
-  alert(`Escala única do mês (${sel.length} dia(s), trabalho e folga juntos).\nNo Fortes: excluir a escala do mês que já existir e importar esta com Data Inicial 01/${dd(mesRef.mes)}/${mesRef.ano}.\nDepois marcar os intervalos (S1/E2) das escalas de trabalho.`);
-};
-$('btn-afdt').onclick = () => {
+// ── conteúdo de cada arquivo (usado pelos botões individuais e pelo zip) ──
+const instrEscala = () => `Escala única do mês (trabalho e folga juntos).\nNo Fortes: excluir a escala do mês que já existir e importar esta com Data Inicial 01/${dd(mesRef.mes)}/${mesRef.ano}.\nDepois marcar os intervalos (S1/E2) das escalas de trabalho.`;
+function gerarEscala() { const sel = itens.filter(i => i.ok && i.escala); return sel.length ? { nome: `ESCALA_${sufixo()}.txt`, dados: Motor.arquivoEscala(sel) } : null; }
+function gerarAFDT() {
   const linhas = [];
   for (const it of itens.filter(i => i.ok && i.afdt)) {
     const pis = (dados.espelho[it.cod] || {}).pis; if (!pis) continue;
     for (const h of [].concat(it.afdt)) linhas.push(pis + dd(it.dia) + dd(mesRef.mes) + mesRef.ano + h.replace(':', ''));
   }
-  if (!linhas.length) return alert('Nenhuma batida aprovada para o AFDT.');
-  baixar(`AFDT_COMPLEMENTAR_${sufixo()}.txt`, linhas.join('\r\n') + '\r\n');
-};
-$('btn-excel').onclick = () => {
+  return linhas.length ? { nome: `AFDT_COMPLEMENTAR_${sufixo()}.txt`, dados: linhas.join('\r\n') + '\r\n' } : null;
+}
+function gerarPendencias() {
   const wb = XLSX.utils.book_new();
   for (const c of Object.values(Motor.CAT)) {
     const rows = itens.filter(i => i.cat === c).map(i => ({ 'Matrícula': i.cod, Nome: i.nome, Dia: i.dia ? dd(i.dia) : 'mês', Semana: i.sem,
       'Espelho hoje': i.espelho, Detalhe: i.det, 'Números': i.nums || '', 'Situação': i.tipo, 'Resposta do gestor': i.gestor, 'O que fazer': i.acao, Feito: '' }));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{ 'Matrícula': '— nada —' }]), c.replace(/[^\w ]/g, '').slice(0, 30));
   }
-  XLSX.writeFile(wb, `PENDENCIAS_${sufixo()}.xlsx`);
-};
-$('btn-mov3').onclick = async () => {
-  if (!motor3) return;
+  return { nome: `PENDENCIAS_${sufixo()}.xlsx`, dados: new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' })) };
+}
+async function gerarMov3() {
+  if (!motor3) return null;
   const espera = {}; motor3.espera.forEach(m => espera[m.nome] = m);
   const lista = motor3.espera.map(m => ({ nome: m.nome, codigo: m.codigo }));
   for (const c of $('f-motextra').value.split(/[\s,;]+/).filter(Boolean)) {
     const e = dados.espelho[c.padStart(6, '0')]; if (e && !lista.some(l => l.codigo === e.codigo)) lista.push({ nome: e.nome, codigo: e.codigo });
   }
   const r = await Planilhas.movimento3(ExcelJS, { filial: $('f-filial').value, ...mesRef, salario: +$('f-sal').value, lista, espera });
-  baixar(r.nome, r.buffer, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  return { nome: r.nome, dados: new Uint8Array(r.buffer) };
+}
+function gerarTI() { if (!ti) return null; const t = LeitorTI.gerarTratado(ti.jornadas); return t ? { nome: LeitorTI.nomeArquivo(ti.cab, $('f-filial').value), dados: t } : null; }
+
+$('btn-escala').onclick = () => { const a = gerarEscala(); if (!a) return alert('Nenhuma escala aprovada.'); baixar(a.nome, a.dados); alert(instrEscala()); };
+$('btn-afdt').onclick = () => { const a = gerarAFDT(); if (!a) return alert('Nenhuma batida aprovada para o AFDT.'); baixar(a.nome, a.dados); };
+$('btn-excel').onclick = () => { const a = gerarPendencias(); baixar(a.nome, a.dados, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); };
+$('btn-mov3').onclick = async () => { const a = await gerarMov3(); if (a) baixar(a.nome, a.dados, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); };
+
+// ── 📦 tudo num zip: arquivos para importar + planilha de pendências (+ Movimento 3 e AFDT tratado, se houver) ──
+$('btn-zip').onclick = async () => {
+  const enc = new TextEncoder(), arqs = {}, lista = [];
+  const por = (a, pasta) => { if (!a) return; arqs[pasta + a.nome] = typeof a.dados === 'string' ? enc.encode(a.dados) : a.dados; lista.push(pasta + a.nome); };
+  por(gerarEscala(), '1_IMPORTAR/'); por(gerarAFDT(), '1_IMPORTAR/'); por(gerarTI(), '1_IMPORTAR/');
+  por(gerarPendencias(), ''); por(await gerarMov3(), '');
+  const leia = ['FECHAMENTO ' + sufixo(), '', 'Arquivos:', ...lista.map(n => ' - ' + n), '', instrEscala(),
+    '', 'AFDT: importar no Fortes Ponto o AFDT do app (gestores e home office) E o AFDT_COMPLEMENTAR deste zip (intervalos de sábado/janta, viagens, feriado e batidas que faltavam).', 'Depois tratar a planilha de pendências (abas "Você corrige" e "Cobrar do gestor").',
+    'No fim, gerar o espelho novo e processar de novo na ferramenta para conferir.'].join('\r\n');
+  arqs['LEIA-ME.txt'] = enc.encode(leia);
+  baixar(`FECHAMENTO_${sufixo()}.zip`, fflate.zipSync(arqs), 'application/zip');
 };
 
 // ───── Intervalos (réplica do site da TI) ─────
@@ -296,10 +337,44 @@ function renderTI() {
 }
 $('ti-todos').onclick = () => { tiVisiveis().forEach(j => j.aprovado = j.correcoes.length > 0); renderTI(); };
 $('ti-nenhum').onclick = () => { ti.jornadas.forEach(j => j.aprovado = false); renderTI(); };
-$('ti-gerar').onclick = () => {
-  const txt = LeitorTI.gerarTratado(ti.jornadas);
-  if (!txt) return alert('Nenhuma correção aprovada.');
-  baixar(LeitorTI.nomeArquivo(ti.cab, $('f-filial').value), txt);
+$('ti-gerar').onclick = () => { const a = gerarTI(); if (!a) return alert('Nenhuma correção aprovada.'); baixar(a.nome, a.dados); };
+
+// ───── Espelho simulado ─────
+let sim = null;
+function atualizarSimulacao() {
+  sim = Simulacao.simular({ espelho: dados.espelho, itens: itens.filter(i => i.ok), afdt: dados.afdt || [], ignorar: ignorar() });
+  renderSim();
+}
+function renderSim() {
+  if (!sim) return;
+  const q = $('sim-busca').value.toLowerCase(), so = $('sim-so').checked;
+  const cor = o => o === 'espelho' ? '' : o === 'automática' ? 'b-p' : 'b-i';
+  let linhas = [], n = 0, pend = 0;
+  for (const e of Object.values(sim)) {
+    if (q && !(e.codigo + ' ' + e.nome).toLowerCase().includes(q)) continue;
+    for (const d of Object.values(e.dias)) {
+      const pendente = d.situacao === 'batida faltando';
+      if (pendente) pend++;
+      if (so && !d.mudou && !pendente) continue;
+      n++;
+      const dep = d.bats.map(b => `<span class="${cor(b.origem)}" title="${b.origem}">${Motor.fmt(b.t)}</span>`).join(' ');
+      const sit = pendente ? '<b style="color:#c62828">batida faltando</b>' : d.situacao;
+      linhas.push(`<tr><td>${e.codigo}<br><small>${esc(e.nome)}</small></td><td class="mono">${dd(d.num)} ${d.sem}</td>
+        <td class="mono">${esc(d.antes)}<br><small>${esc(d.det)}</small></td><td class="mono">${dep}</td><td class="mono"><small>${esc(d.escala)}</small></td>
+        <td>${Motor.dur(d.prev)}</td><td>${d.trab === null ? '—' : Motor.dur(d.trab)}</td><td>${d.he ? Motor.dur(d.he) : ''}</td><td>${d.at ? Motor.dur(d.at) : ''}</td><td>${sit}</td></tr>`);
+    }
+  }
+  $('sim-body').innerHTML = linhas.join('');
+  $('sim-resumo').textContent = `${n} dia(s) listados · ${pend} ainda com batida faltando`;
+}
+$('sim-busca').oninput = renderSim; $('sim-so').onchange = renderSim;
+document.addEventListener('change', ev => { if (ev.target.matches('#tbody input[type=checkbox]')) atualizarSimulacao(); });
+$('f-conf').onchange = async e => { const f = e.target.files[0]; if (!f || !sim) return;
+  const real = Motor.lerEspelho(await lerPdf(f));
+  const difs = Simulacao.conferir(sim, real, { ignorar: ignorar() });
+  $('ok-conf').textContent = difs.length ? `${difs.length} dia(s) diferentes do simulado` : '✓ Espelho novo igual ao simulado';
+  $('conf-res').innerHTML = difs.length ? '<table><thead><tr><th>Matrícula / Nome</th><th>Dia</th><th>Espelho novo</th><th>Diferença</th></tr></thead><tbody>' +
+    difs.map(x => `<tr><td>${x.cod}<br><small>${esc(x.nome)}</small></td><td class="mono">${dd(x.dia)} ${x.sem}</td><td class="mono">${esc(x.espelho)}<br><small>${esc(x.det)}</small></td><td>${esc(x.acao)}</td></tr>`).join('') + '</tbody></table>' : '';
 };
 </script>
 </body>

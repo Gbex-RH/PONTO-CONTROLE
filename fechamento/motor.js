@@ -177,7 +177,9 @@
     };
     const reaisDoDia = (e, d) => {                         // batidas sem as pré-assinaladas do intervalo
       const ps = (e.prevSem[d.sem] || []).map(hm), pre = new Set(ps.slice(1, -1));
-      return d.bat.filter(b => !pre.has(b));
+      // inclui as entradas/saídas que o gestor informou (ainda não importadas no espelho cru)
+      const lanc = (resp[e.codigo + '|' + d.num] || []).filter(x => x.hora && /^LANC/.test(x.tipo)).map(x => hm(x.hora));
+      return [...new Set([...d.bat.filter(b => !pre.has(b)), ...lanc])].sort((x, y) => x - y);
     };
     for (const [cod, e] of Object.entries(espelho)) {
       if (ign.has(cod)) continue;
@@ -191,7 +193,9 @@
         // turno da noite = batida à noite (18h–24h) seguida de batida de madrugada (0h–4h); com jornada diurna cadastrada
         const noite = reais.find(t => t >= 1080), madrugada = reais.some(t => t <= 240 && noite !== undefined && reais.indexOf(t) > reais.indexOf(noite));
         if (ps[0] < 720 && noite !== undefined && madrugada) { d._ini = noite; noturnos.push(d); }
-        else if (primeira >= ps[1] && primeira < 1080 && ps[0] < ps[1] - 120) { d._ini = primeira; tarde.push(d); }   // entrou depois da 1a saída prevista
+        else if (primeira >= ps[1] && primeira < 1080 && ps[0] < ps[1] - 120
+          // se o gestor informou uma entrada de manhã (ainda não importada), o dia não foi deslocado: é só batida faltando
+          && !(resp[cod + '|' + d.num] || []).some(x => x.hora && hm(x.hora) < ps[1])) { d._ini = primeira; tarde.push(d); }   // entrou depois da 1a saída prevista
       }
       if (noturnos.length && noturnos.length >= Math.max(5, 0.7 * trabalhados.length)) {
         add(CAT.VOCE, cod, noturnos[0].num, 'Turno da noite o mês todo', `Entrou à noite em ${noturnos.length} de ${trabalhados.length} dias trabalhados, mas a jornada cadastrada é diurna. Trocar a jornada para noturna no Fortes Pessoal e reprocessar; depois desconsiderar batidas do gestor que sobrarem.`, {});
@@ -211,6 +215,9 @@
         const tipo = noite ? 'Trabalhou à noite (jornada diurna)' : 'Dia deslocado (entrou à tarde)';
         const respTipos = (resp[cod + '|' + d.num] || []).map(r => r.tipo);
         // com uma batida só não dá para saber o dia; e se o gestor disse falta/folga, a resposta contradiz o ponto
+        // entrada faltando no espelho e sem confirmação de que entrou à tarde (lançamento do gestor à tarde ou abono da manhã) → perguntar
+        const confirmado = (resp[cod + '|' + d.num] || []).some(x => x.hora && hm(x.hora) >= ini - 60 && hm(x.hora) <= ini + 60) || /ABON|DECLARA/.test(d.det);
+        if (!noite && d.vazios.includes('E.1') && !confirmado) { add(CAT.GESTOR, cod, d.num, 'Entrada faltando', `Primeira batida às ${fmt(ini)}. Esqueceu de bater a entrada (qual horário?) ou entrou à tarde?`, { gestor: g }); marca(cod, d.num); continue; }
         if (reais.length < 2) { add(CAT.GESTOR, cod, d.num, tipo, `Só há a batida ${fmt(ini)}. Qual foi o horário de entrada e de saída neste dia?`, { gestor: g }); marca(cod, d.num); continue; }
         if (respTipos.some(t => t === 'FALTA' || t === 'FOLGA')) { add(CAT.GESTOR, cod, d.num, tipo, `O gestor informou ${respTipos.join('/').toLowerCase()}, mas há batidas (${reais.map(fmt).join(', ')}). Confirmar com o gestor o horário real antes de criar escala.`, { gestor: g }); marca(cod, d.num); continue; }
         const { c } = cargaDoDia(e, d.sem);
@@ -225,7 +232,7 @@
         const limite = fimEsc >= 1440 ? Math.ceil((fimEsc % 1440 + 40) / 60) * 60 : null;
         add(CAT.IMPORTAR, cod, d.num, tipo,
           `Escala do mês: ${bat.map(fmt).join(' / ')}${limite !== null ? ', Limite ' + fmt(limite) : ''} (carga ${dur(c)}${duas ? ' em 2 batidas, sem intervalo real no dia' : ''}, entrada ${fmt(ini)}${duas ? ', saída ' + fmt(fimReal) : ''}). Desconsiderar as pré-assinaladas do dia${sobra.length ? ' e a(s) batida(s) ' + sobra.map(fmt).join(', ') + ' (informada pelo gestor ou sobrando no par)' : ''}.${duas ? '' : ' Marcar o intervalo depois.'}`,
-          { gestor: g, escala: { tipo: 'X', bat, limite } });
+          { gestor: g, escala: { tipo: 'X', bat, limite }, desc: sobra, limpaPre: true });
         marca(cod, d.num);
       }
     }
@@ -257,7 +264,7 @@
       const e = espelho[r.cod]; if (!e || ign.has(r.cod)) continue;
       const d = e.dias[r.dia] || { bat: [], det: '' };
       const h = hm(r.hora); const g = txtResp(r.cod, r.dia);
-      if (/LICEN|F[ÉE]RIAS|AFAST/.test(d.det)) { add(CAT.VOCE, r.cod, r.dia, 'Batida informada em dia de afastamento', `Não inserir ${r.hora} (o dia é ${d.det.toLowerCase()}).`, { gestor: g }); marca(r.cod, r.dia); continue; }
+      if (/LICEN|F[ÉE]RIAS|AFAST/.test(d.det)) { add(CAT.VOCE, r.cod, r.dia, 'Batida informada em dia de afastamento', `Não inserir ${r.hora} (o dia é ${d.det.toLowerCase()}).`, { gestor: g, naoInserir: [h] }); marca(r.cod, r.dia); continue; }
       const naEsp = d.bat.some(b => Math.abs(b - h) <= 5);
       const naoAfdt = r.status === 'Confirmado' && !noAfdt.has(r.cod + '|' + r.dia + '|' + r.hora) && !naEsp;
       if (naoAfdt) add(CAT.IMPORTAR, r.cod, r.dia, 'Batida informada fora do AFDT', `Incluir ${r.hora} no AFDT.`, { gestor: g, afdt: r.hora });
@@ -266,7 +273,7 @@
       if (tratado.has(r.cod + '|' + r.dia)) continue;          // dia já resolvido pela análise do espelho
       const { ps, c } = cargaDoDia(e, d.sem);
       const lanc = (resp[r.cod + '|' + r.dia] || []).filter(x => x.hora).map(x => hm(x.hora));
-      if (ps.length > 1 && h === Math.min(...lanc) && h >= ps[1] && !d.bat.some(b => b < h - 5) && !noturnoAnterior(e, r.dia, h) && !/FERIADO/.test(d.det)) {
+      if (ps.length > 1 && ps[0] < ps[1] && h === Math.min(...lanc) && h >= ps[1] && !d.bat.some(b => b < h - 5) && !noturnoAnterior(e, r.dia, h) && !/FERIADO/.test(d.det)) {
         const itv = intervalo(c), meio = Math.floor(c / 2);
         const bat = itv ? [h, h + meio, h + meio + itv, h + c + itv] : [h, h + c];
         add(CAT.IMPORTAR, r.cod, r.dia, 'Dia deslocado (entrada tarde)', `Escala do mês: ${bat.map(fmt).join(' / ')} (carga ${dur(c)}). Marcar intervalo depois.`, { gestor: g, escala: { tipo: 'X', bat } });
@@ -288,7 +295,8 @@
         if (hr === Math.max(...lanc.map(rel)) && hr > rel(ini) && fimPrev - hr > 60 && soPre && real.length) {
           const bat = [ini, ini + pa.c];
           const limite = (ini + pa.c) % 1440 < ini ? Math.ceil(((ini + pa.c) % 1440 + 40) / 60) * 60 : null;
-          add(CAT.IMPORTAR, r.cod, alvo, 'Saída antecipada informada', `Escala do mês: ${bat.map(fmt).join(' / ')} (carga ${dur(pa.c)} em 2 batidas${limite !== null ? ', Limite ' + fmt(limite) : ''}). Com escala de 2 batidas, ficam só a entrada e a saída ${r.hora}: desconsiderar ${[...(da.bat || []).filter(t => rel(t) > rel((da.bat || [])[0]) && rel(t) !== hr)].map(fmt).join(', ')}.`, { gestor: g, escala: { tipo: 'X', bat, limite } });
+          const descs = (da.bat || []).filter(t => rel(t) > rel((da.bat || [])[0]) && rel(t) !== hr);
+          add(CAT.IMPORTAR, r.cod, alvo, 'Saída antecipada informada', `Escala do mês: ${bat.map(fmt).join(' / ')} (carga ${dur(pa.c)} em 2 batidas${limite !== null ? ', Limite ' + fmt(limite) : ''}). Com escala de 2 batidas, ficam só a entrada e a saída ${r.hora}: desconsiderar ${[...(da.bat || []).filter(t => rel(t) > rel((da.bat || [])[0]) && rel(t) !== hr)].map(fmt).join(', ')}.`, { gestor: g, escala: { tipo: 'X', bat, limite }, desc: descs, limpaPre: true });
           marca(r.cod, alvo);
         }
       }
@@ -314,7 +322,7 @@
         if (ps.length) {
           const bat = [ps[0], ps[0] + c];
           acao = `Saída antecipada: escala do mês ${bat.map(fmt).join(' / ')} (carga prevista em 2 batidas) e desconsiderar a pré-assinalada da tarde.`;
-          extra.escala = { tipo: 'X', bat };
+          extra.escala = { tipo: 'X', bat }; extra.limpaPre = true;
           add(CAT.IMPORTAR, r.cod, r.dia, 'Saída antecipada informada', acao, extra); marca(r.cod, r.dia); continue;
         }
       }
@@ -340,7 +348,7 @@
             let sai = (i - 1) % 2 === 0 ? b[i] : b[i - 1];
             if (lancDia.has(b[i])) sai = b[i]; else if (lancDia.has(b[i - 1])) sai = b[i - 1];
             const origem = lancDia.has(sai) ? 'informada pelo gestor (erro do gestor)' : 'relógio (erro do empregado)';
-            add(CAT.VOCE, cod, dia, 'Batida duplicada', `Desconsiderar ${fmt(sai)} — ${origem}.`, { gestor: g });
+            add(CAT.VOCE, cod, dia, 'Batida duplicada', `Desconsiderar ${fmt(sai)} — ${origem}.`, { gestor: g, desc: [sai] });
             marca(cod, dia); break;
           }
         }
@@ -362,12 +370,21 @@
           const doGestor = (resp[cod + '|' + dia] || []).concat(resp[cod + '|' + (dia - 1)] || []).filter(x => x.hora && hm(x.hora) < b[0] && hm(x.hora) < 720).map(x => x.hora);
           if (pa.ps.length >= 2) {
             const limite = Math.ceil((b[0] + 30) / 60) * 60;
-            add(CAT.IMPORTAR, cod, dia - 1, 'Saída real depois do previsto (turno noturno)', `${fmt(b[0])} do dia ${dd(dia)} é a saída real do turno de ${dd(dia - 1)}. Escala do mês no dia ${dd(dia - 1)}: ${pa.ps.map(fmt).join(' / ')} com Limite ${fmt(limite)}${doGestor.length ? '; excluir a saída informada pelo gestor (' + doGestor.join(', ') + ')' : ''}. Marcar o intervalo depois.`, { gestor: g, escala: { tipo: 'X', bat: pa.ps, limite } });
+            add(CAT.IMPORTAR, cod, dia - 1, 'Saída real depois do previsto (turno noturno)', `${fmt(b[0])} do dia ${dd(dia)} é a saída real do turno de ${dd(dia - 1)}. Escala do mês no dia ${dd(dia - 1)}: ${pa.ps.map(fmt).join(' / ')} com Limite ${fmt(limite)}${doGestor.length ? '; excluir a saída informada pelo gestor (' + doGestor.join(', ') + ')' : ''}. Marcar o intervalo depois.`, { gestor: g, escala: { tipo: 'X', bat: pa.ps, limite }, naoInserirDia: [[dia, doGestor.map(hm)], [dia - 1, doGestor.map(hm)]] });
           } else add(CAT.VOCE, cod, dia, 'Batida isolada após turno noturno', `Conferir se ${fmt(b[0])} é a saída real do turno de ${dd(dia - 1)}.`, { gestor: g });
           marca(cod, dia); continue;
         }
         if (b.length % 2 === 1 && !d.vazios.length && b.length >= 3) {
-          add(CAT.VOCE, cod, dia, 'Batida a mais', 'Desconsiderar a batida que dá menos prejuízo ao empregado (ver origem).', { gestor: g });
+          // fica a combinação cujo intervalo (S1/E2) mais se parece com o intervalo da jornada; empate → maior trabalhado
+          const psJ = (e.prevSem[d.sem] || []).map(hm), alvo = psJ.length >= 4 ? [psJ[1], psJ[2]] : null;
+          const dist = (x, y) => Math.min(Math.abs(x - y), 1440 - Math.abs(x - y));
+          let melhor = null, mt = -1, md = Infinity;
+          for (let i = 0; i < b.length; i++) {
+            const r = b.filter((_, j) => j !== i); let t = 0; for (let k = 0; k + 1 < r.length; k += 2) t += (r[k + 1] - r[k] + 1440) % 1440;
+            const dv = alvo && r.length >= 4 ? dist(r[1], alvo[0]) + dist(r[2], alvo[1]) : 0;
+            if (dv < md - 5 || (Math.abs(dv - md) <= 5 && t > mt)) { md = dv; mt = t; melhor = b[i]; }
+          }
+          add(CAT.VOCE, cod, dia, 'Batida a mais', `Desconsiderar ${fmt(melhor)} (a que dá menos prejuízo ao empregado; ver origem).`, { gestor: g, desc: [melhor] });
           marca(cod, dia); continue;
         }
         if (aus) {

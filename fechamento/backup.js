@@ -76,26 +76,19 @@
   }
 
   // Apoio de atestados (gerado pelo apoio_atestados.py): licenças do Fortes Pessoal + e-mails de atestado
-  function aplicarApoio(itens, apoio, { mes, ano }) {
+  // Apoio de atestados (gerado pelo apoio_atestados.py): só os E-MAILS de atestado.
+  // Não dá para garantir se o atestado foi cadastrado no Fortes Pessoal, então a ferramenta só avisa que o e-mail chegou.
+  function aplicarApoio(itens, apoio) {
     if (!apoio) return itens;
     const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
-    const ymd = d => `${ano}${String(mes).padStart(2, '0')}${String(d).padStart(2, '0')}`;
-    const lic = (cod, d) => (apoio.licencas || []).find(l => l.cod === cod && l.ini <= ymd(d) && (l.fim === '@' || l.fim >= ymd(d)));
     const mails = nome => { const p = norm(nome).split(/\s+/).slice(0, 2).join(' ');
       return (apoio.emails || []).filter(m => norm(m.assunto + ' ' + m.anexos.join(' ')).includes(p)); };
-    return itens.filter(it => {
-      const l = lic(it.cod, it.dia);
-      if (/Atestado não cadastrado|Dia inteiro sem batida|Sem atestado|hospital/i.test(it.tipo + it.acao)) {
-        if (l) {
-          if (/Dia inteiro sem batida/.test(it.tipo)) return false;                // licença já cobre o dia
-          it.cat = '4. Conferido — sem ação'; it.acao = `Atestado já cadastrado no Fortes Pessoal (${l.tipo} ${l.ini.slice(6)}/${l.ini.slice(4, 6)} a ${l.fim.slice(6)}/${l.fim.slice(4, 6)}).`;
-        } else {
-          const ms = mails(it.nome);
-          if (ms.length) it.acao += ` 📧 E-mail de atestado: ${ms.map(m => m.data.slice(0, 5) + ' "' + m.assunto + '"').join('; ')} — abrir o anexo e conferir as datas.`;
-        }
-      }
-      return true;
-    });
+    for (const it of itens) {
+      if (!/Atestado|Dia inteiro sem batida|Entrada faltando|hospital|doente|falta/i.test(it.tipo + ' ' + it.acao)) continue;
+      const ms = mails(it.nome);
+      if (ms.length) it.acao += ` 📧 Chegou e-mail de atestado: ${ms.map(m => m.data.slice(0, 5) + ' "' + m.assunto + '"').join('; ')} — abrir o anexo e conferir as datas.`;
+    }
+    return itens;
   }
 
   const api = { novoLeitor, lerBackupPonto, enriquecer, aplicarApoio, ORIGEM };
