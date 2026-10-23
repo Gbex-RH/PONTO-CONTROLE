@@ -8,13 +8,13 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-<script src="motor.js?v=20261022"></script>
-<script src="auditoria.js?v=20261022"></script>
-<script src="motoristas.js?v=20261022"></script>
-<script src="planilhas.js?v=20261022"></script>
-<script src="backup.js?v=20261022"></script>
-<script src="ti.js?v=20261022"></script>
-<script src="simulacao.js?v=20261022"></script>
+<script src="motor.js?v=20261023c"></script>
+<script src="auditoria.js?v=20261023c"></script>
+<script src="motoristas.js?v=20261023c"></script>
+<script src="planilhas.js?v=20261023c"></script>
+<script src="backup.js?v=20261023c"></script>
+<script src="ti.js?v=20261023c"></script>
+<script src="simulacao.js?v=20261023c"></script>
 <style>
   :root { --azul:#1f4e78; --borda:#d6dde6; --fundo:#f5f6f8; }
   body { font-family: Segoe UI, Arial, sans-serif; background: var(--fundo); margin: 0; color: #1b2b3a; }
@@ -68,6 +68,15 @@
           <option value="THE">THE — 60% fixo</option>
           <option value="NAT">NAT — 50% (domingo 100%)</option>
           <option value="MOS">MOS — 50% (domingo 100%)</option>
+          <option value="FOR">FOR — 50% fixo</option>
+          <option value="SOB">SOB — 50% fixo</option>
+          <option value="MCZ">MCZ — 50% fixo</option>
+          <option value="JPA">JPA — 50% fixo</option>
+          <option value="SLU">SLU — 50% fixo</option>
+          <option value="JUA">JUA — 50% fixo</option>
+          <option value="PAR">PAR — 50% fixo</option>
+          <option value="BAY">BAY — 50% fixo</option>
+          <option value="MTZ">MTZ — 50% fixo</option>
           <option value="OUTRA">Outra — 50% fixo</option>
         </select></div>
       <div><label>Ignorar matrículas</label><small>Desligados ou fora do escopo</small><input type="text" id="f-ign" placeholder="ex.: 001760, 001772" style="width:95%"><label style="font-weight:normal;margin-top:6px"><input type="checkbox" id="f-demit" checked> Desconsiderar demitidos (com rescisão no espelho)</label><div class="ok" id="ok-demit"></div></div>

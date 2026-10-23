@@ -14,6 +14,8 @@
     THE: { unica: 60 },
     NAT: { unica: 50, domingo: 100 },
     MOS: { unica: 50, domingo: 100 },
+    FOR: { unica: 50 }, SOB: { unica: 50 }, MCZ: { unica: 50 }, JPA: { unica: 50 }, SLU: { unica: 50 },
+    JUA: { unica: 50 }, PAR: { unica: 50 }, BAY: { unica: 50 }, MTZ: { unica: 50 },
     OUTRA: { unica: 50 }
   };
   CAT.CALCULO = '5. Cálculo do Fortes';

@@ -197,12 +197,22 @@
         if (ps[0] < 720 && noite !== undefined && madrugada) { d._ini = noite; noturnos.push(d); }
         else if (primeira >= ps[1] && primeira < 1080 && ps[0] < ps[1] - 120
           // se o gestor informou uma entrada de manhã (ainda não importada), o dia não foi deslocado: é só batida faltando
-          && !(resp[cod + '|' + d.num] || []).some(x => x.hora && hm(x.hora) < ps[1])) { d._ini = primeira; tarde.push(d); }   // entrou depois da 1a saída prevista
+          && !(resp[cod + '|' + d.num] || []).some(x => x.hora && hm(x.hora) < ps[1])
+          // 1ª batida no horário da saída ou da volta do almoço (±45 min) = entrada esquecida, não dia deslocado (caso FOR 01/09)
+          // (vale só sem confirmação do gestor: se ele informou um horário da tarde perto da 1ª batida, o dia foi mesmo deslocado — caso FOR 04/09)
+          && !(ps.length >= 4 && (Math.abs(primeira - ps[1]) <= 45 || Math.abs(primeira - ps[2]) <= 45)
+               && !(resp[cod + '|' + d.num] || []).some(x => x.hora && hm(x.hora) >= ps[1] && Math.abs(hm(x.hora) - primeira) <= 60))) { d._ini = primeira; tarde.push(d); }   // entrou depois da 1a saída prevista
       }
       if (noturnos.length && noturnos.length >= Math.max(5, 0.7 * trabalhados.length)) {
         add(CAT.VOCE, cod, noturnos[0].num, 'Turno da noite o mês todo', `Entrou à noite em ${noturnos.length} de ${trabalhados.length} dias trabalhados, mas a jornada cadastrada é diurna. Trocar a jornada para noturna no Fortes Pessoal e reprocessar; depois desconsiderar batidas do gestor que sobrarem.`, {});
         for (const n of Object.keys(e.dias)) marca(cod, +n);
         ign.add(cod); continue;
+      }
+      // à tarde praticamente o mês todo = horário cadastrado errado → trocar a jornada, não criar escala dia a dia (caso FOR set/2026)
+      if (tarde.length && tarde.length >= Math.max(5, 0.7 * trabalhados.length)) {
+        add(CAT.VOCE, cod, tarde[0].num, 'Horário da tarde o mês todo', `Entrou à tarde em ${tarde.length} de ${trabalhados.length} dias trabalhados (ex.: ${fmt(tarde[0]._ini)}), mas a jornada cadastrada começa ${fmt(hm((e.prevSem[tarde[0].sem] || [])[0]))}. Trocar a jornada no Fortes Pessoal e reprocessar.`, {});
+        for (const d of tarde) marca(cod, d.num);
+        tarde.length = 0;
       }
       for (const d of [...noturnos, ...tarde]) {
         const g = txtResp(cod, d.num), noite = noturnos.includes(d);
@@ -269,7 +279,7 @@
       if (/LICEN|F[ÉE]RIAS|AFAST/.test(d.det)) { add(CAT.VOCE, r.cod, r.dia, 'Batida informada em dia de afastamento', `Não inserir ${r.hora} (o dia é ${d.det.toLowerCase()}).`, { gestor: g, naoInserir: [h] }); marca(r.cod, r.dia); continue; }
       const naEsp = d.bat.some(b => Math.abs(b - h) <= 5);
       const naoAfdt = r.status === 'Confirmado' && !noAfdt.has(r.cod + '|' + r.dia + '|' + r.hora) && !naEsp;
-      if (naoAfdt) add(CAT.IMPORTAR, r.cod, r.dia, 'Batida informada fora do AFDT', `Incluir ${r.hora} no AFDT.`, { gestor: g, afdt: r.hora });
+      if (naoAfdt && !tratado.has(r.cod + '|' + r.dia)) add(CAT.IMPORTAR, r.cod, r.dia, 'Batida informada fora do AFDT', `Incluir ${r.hora} no AFDT.`, { gestor: g, afdt: r.hora });
       if (r.status !== 'Confirmado') add(CAT.VOCE, r.cod, r.dia, 'Lançamento ainda Pendente', `Confirmar ${r.hora} na Validação.`, { gestor: g });
       // entrada informada bem depois do previsto e sem batidas antes = dia deslocado → escala
       if (tratado.has(r.cod + '|' + r.dia)) continue;          // dia já resolvido pela análise do espelho
@@ -368,8 +378,8 @@
         const aus = /AUS[ÊE]NCIA/.test(d.det) || b.length % 2 === 1;
         const diaInteiro = !b.length && /FALTA \[FOLHA\]/.test(d.det);
         const ant = (e.dias[dia - 1] || {}).bat || [];
-        if (b.length === 1 && b[0] < 720 && ant.some(x => x >= 1080) && !d.vazios.length) {
-          // batida isolada de manhã depois do turno da noite = saída REAL tardia (caso Weides 05/09/2026)
+        if (b.length === 1 && b[0] < 720 && ant[0] !== undefined && ant[0] >= 1080 && !d.vazios.length) {   // só se o turno anterior COMEÇOU à noite
+          // batida isolada de manhã depois do turno da noite = saída REAL tardia (caso 05/09/2026)
           const da = e.dias[dia - 1] || {}, pa = cargaDoDia(e, da.sem || '');
           const doGestor = (resp[cod + '|' + dia] || []).concat(resp[cod + '|' + (dia - 1)] || []).filter(x => x.hora && hm(x.hora) < b[0] && hm(x.hora) < 720).map(x => x.hora);
           if (pa.ps.length >= 2) {

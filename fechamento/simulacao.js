@@ -57,7 +57,7 @@
         if (n.origem === 'gestor' && lst.some(b => b.origem !== 'gestor' && Math.abs(b.t - n.t) <= 15)) continue;
         lst.push({ t: n.t, origem: n.origem });
       }
-      // 2) escala com Limite puxa as batidas da manhã seguinte para o turno (caso Weides)
+      // 2) escala com Limite puxa as batidas da manhã seguinte para o turno (caso de 05/09/2026)
       for (const it of aprov.filter(i => i.cod === cod && i.escala && i.escala.limite)) {
         const dia = it.escala.dia || it.dia, prox = porData[dia + 1] || [];
         const puxar = prox.filter(b => b.t <= it.escala.limite);
