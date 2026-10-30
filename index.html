@@ -575,7 +575,7 @@
         <button class="empresa-btn gblog" id="btn-gblog" onclick="setEmpresa('GBLOG')">GBLOG</button>
       </div>
       <span class="topbar-user">Olá, <strong id="topbar-nome">—</strong></span>
-      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v90</span>
+      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v91</span>
       <button class="btn-ghost" onclick="trocarMinhaSenha()" title="Trocar minha senha">🔑</button>
       <button class="btn-ghost" onclick="doLogout()">Sair</button>
     </div>
@@ -773,6 +773,16 @@
           </div>
           <select id="meus-filial" onchange="renderMeus()" style="display:none;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 12px;border-radius:var(--radius-sm);outline:none;">
             <option value="">Todas as filiais</option>
+          </select>
+          <select id="meus-tipo" onchange="renderMeus()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 12px;border-radius:var(--radius-sm);outline:none;">
+            <option value="">Todos os tipos</option>
+            <option value="lancamento">Lançamento</option>
+            <option value="folga">Folga</option>
+            <option value="atestado">Atestado</option>
+            <option value="falta">Falta</option>
+            <option value="ferias">Férias</option>
+            <option value="outro">Outro</option>
+            <option value="desligamento">Desligamento</option>
           </select>
         </div>
       </div>
@@ -1198,6 +1208,19 @@
           <input type="file" id="bk-arquivo" accept=".zip,.bt" onchange="bkAnalisar()" style="font-size:13px">
           <div id="bk-preview" style="margin-top:14px;font-size:13px"></div>
         </div>
+
+        <div class="card" style="margin-top:16px">
+          <div class="card-title"><span class="dot"></span> Exportar / importar jornadas por planilha (Excel)</div>
+          <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;line-height:1.6">
+            Exporta as jornadas da <b id="jor-exp-emp"></b> para Excel (abas "Jornadas" e "Funcionarios"). Edite a planilha exportada
+            e reenvie para atualizar — nada é gravado antes da sua confirmação, igual ao backup do Fortes acima.
+          </div>
+          <button class="btn-ghost" onclick="jorExportarExcel()">📊 Exportar jornadas (Excel)</button>
+          <div style="margin-top:14px">
+            <input type="file" id="jor-imp-arquivo" accept=".xlsx,.xls" onchange="jorImportarAnalisar()" style="font-size:13px">
+          </div>
+          <div id="jor-imp-preview" style="margin-top:14px;font-size:13px"></div>
+        </div>
       </div>
 
       <div id="cad-pane-ho" style="display:none">
@@ -1610,6 +1633,59 @@ async function storageAppend(registro) {
     const all = await storageGet(STORAGE_KEY);
     all.push(registro);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+  }
+}
+
+// Atualiza só os campos alterados de UM registro, sem baixar/reenviar o nó /registros
+// inteiro (~2,7MB) — usado nos botões de marcar/desmarcar da Validação, que antes
+// chamavam storageGet()+storageSet() completos a cada clique (lentidão reportada em 30/10).
+// Mantém regCache em dia na hora (sem invalidar) para o próximo render não refazer o GET completo.
+async function storagePatchRegistro(id, patch) {
+  if (regCache) {
+    const i = regCache.findIndex(r => r.id === id);
+    if (i >= 0) regCache[i] = { ...regCache[i], ...patch };
+  }
+  try {
+    const res = await fetch(FB_URL + '/' + FB_NODE + '/' + id + '.json', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch)
+    });
+    if (!res.ok) throw new Error('Firebase PATCH falhou: ' + res.status);
+  } catch(e) {
+    console.warn('Firebase PATCH erro, caindo para gravação completa:', e);
+    invalidarCacheRegistros();
+    const all = await storageGet(STORAGE_KEY) || [];
+    const idx = all.findIndex(r => r.id === id);
+    if (idx >= 0) all[idx] = { ...all[idx], ...patch };
+    await storageSet(STORAGE_KEY, all);
+  }
+}
+
+// Mesma ideia que storagePatchRegistro, mas para vários registros de uma vez (ex.: "✓ Todos"
+// na Validação) — um único PATCH multi-caminho em vez de reescrever o nó inteiro.
+async function storagePatchMulti(patchesPorId) {
+  const flat = {};
+  Object.entries(patchesPorId).forEach(([id, patch]) => {
+    Object.entries(patch).forEach(([campo, valor]) => { flat[id + '/' + campo] = valor; });
+    if (regCache) {
+      const i = regCache.findIndex(r => r.id === id);
+      if (i >= 0) regCache[i] = { ...regCache[i], ...patch };
+    }
+  });
+  try {
+    const res = await fetch(FB_URL + '/' + FB_NODE + '.json', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(flat)
+    });
+    if (!res.ok) throw new Error('Firebase PATCH multi falhou: ' + res.status);
+  } catch(e) {
+    console.warn('Firebase PATCH multi erro, caindo para gravação completa:', e);
+    invalidarCacheRegistros();
+    const all = await storageGet(STORAGE_KEY) || [];
+    const updated = all.map(r => patchesPorId[r.id] ? { ...r, ...patchesPorId[r.id] } : r);
+    await storageSet(STORAGE_KEY, updated);
   }
 }
 
@@ -2870,6 +2946,7 @@ async function renderMeus() {
   const isAdmin = currentUser.filiais === null;
 
   const filtMeusFilial = (document.getElementById('meus-filial').value || '');
+  const filtMeusTipo = (document.getElementById('meus-tipo').value || '');
   // Visibilidade compartilhada: mesma regra de filial/setor da aba Pendências —
   // gestores que dividem uma filial (ex: Gutemberg e Thayse em Parnamirim) veem
   // os mesmos lançamentos, não importa qual dos dois resolveu. A coluna "Gestor"
@@ -2880,6 +2957,7 @@ async function renderMeus() {
     if ((r.empresa || 'GBEX') !== currentEmpresa) return false;
     if (!isAdmin && !codigosPermitidos.has(r.codigo)) return false;
     if (isAdmin && filtMeusFilial && filialReg(r) !== filtMeusFilial) return false;
+    if (filtMeusTipo && r.tipo !== filtMeusTipo) return false;
     if (busca && !r.nome.toLowerCase().includes(busca) && !r.codigo.includes(busca)) return false;
     return true;
   });
@@ -2907,7 +2985,8 @@ async function renderMeus() {
       '<td><span class="badge badge-' + r.tipo + '">' + labelTipo(r.tipo) + '</span></td>' +
       '<td style="font-family:monospace">' + (r.entrada || (r.saida ? '' : '&mdash;')) + (r.saida ? (r.entrada ? ' &rarr; ' : '') + r.saida : '') + '</td>' +
       '<td style="font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + (r.obs||'') + '">' + (r.obs||'&mdash;') + '</td>' +
-      '<td style="font-size:12px;color:var(--text-muted);white-space:nowrap">' + (r.gestor ? r.gestor.split(' ')[0] : '&mdash;') + '</td>' +
+      '<td style="font-size:12px;color:var(--text-muted);white-space:nowrap">' + (r.gestor ? r.gestor.split(' ')[0] : '&mdash;') +
+        (r.ts ? '<br><span style="font-size:10px;opacity:.7">' + fmtDataHora(r.ts) + '</span>' : '') + '</td>' +
       '<td><div class="row-actions">' +
         '<button class="btn-edit" data-action="edit" data-id="' + r.id + '" title="Editar">✏️</button>' +
         '<button class="btn-del" data-action="del-meus" data-id="' + r.id + '" title="Excluir">🗑</button>' +
@@ -2977,7 +3056,7 @@ async function deletarRegMeus(id) {
 //  MARCAR/DESMARCAR TODOS — VALIDAÇÃO
 // ─────────────────────────────────────────────
 async function toggleTodos() {
-  const all = await storageGet(STORAGE_KEY) || [];
+  const all = await storageGet(STORAGE_KEY, { cache: true }) || [];
   const mes = document.getElementById('val-mes').value;
   const filtFilial = document.getElementById('val-filial').value;
   const filtTipo = document.getElementById('val-tipo').value;
@@ -2999,19 +3078,19 @@ async function toggleTodos() {
   const todosConfirmados = visiveis.every(r => r.status === 'confirmado');
   const novoStatus = todosConfirmados ? 'pendente' : 'confirmado';
 
-  const ids = new Set(visiveis.map(r => r.id));
-  const updated = all.map(r => {
-    if (!ids.has(r.id)) return r;
-    const atualizado = { ...r, status: novoStatus };
+  // Monta só os campos alterados por registro (PATCH multi) em vez de reescrever o nó inteiro
+  const patchesPorId = {};
+  visiveis.forEach(r => {
+    const patch = { status: novoStatus };
     // Mesma regra do toggleStatus (individual): desmarcar em massa não pode deixar
     // o registro travado com uma exportação antiga que ele nunca mais vai conseguir refazer.
     if (novoStatus === 'pendente' && r.exportado_afdt) {
-      atualizado.exportado_afdt = false;
-      atualizado.exportado_em = null;
+      patch.exportado_afdt = false;
+      patch.exportado_em = null;
     }
-    return atualizado;
+    patchesPorId[r.id] = patch;
   });
-  await storageSet(STORAGE_KEY, updated);
+  await storagePatchMulti(patchesPorId);
 
   const btn = document.getElementById('btn-toggle-todos');
   if (btn) btn.textContent = novoStatus === 'confirmado' ? '○ Nenhum' : '✓ Todos';
@@ -3285,36 +3364,35 @@ async function exportarValidacaoExcel() {
 }
 
 async function toggleStatus(id) {
-  const all = await storageGet(STORAGE_KEY) || [];
-  const idx = all.findIndex(r => r.id === id);
-  if (idx < 0) return;
-  const novoStatus = all[idx].status === 'confirmado' ? 'pendente' : 'confirmado';
-  all[idx].status = novoStatus;
+  const all = await storageGet(STORAGE_KEY, { cache: true }) || [];
+  const atual = all.find(r => r.id === id);
+  if (!atual) return;
+  const novoStatus = atual.status === 'confirmado' ? 'pendente' : 'confirmado';
+  const patch = { status: novoStatus };
   // Desconfirmar invalida uma exportação anterior — sem isso, o registro fica "travado":
   // some da tela (filtro padrão é "Não exportados") e nunca mais entra num AFDT novo,
   // mesmo depois de reconfirmado, porque o app ainda acha que ele já foi exportado.
-  if (novoStatus === 'pendente' && all[idx].exportado_afdt) {
-    all[idx].exportado_afdt = false;
-    all[idx].exportado_em = null;
+  if (novoStatus === 'pendente' && atual.exportado_afdt) {
+    patch.exportado_afdt = false;
+    patch.exportado_em = null;
   }
-  await storageSet(STORAGE_KEY, all);
+  await storagePatchRegistro(id, patch);
   renderValidacao();
 }
 
 async function toggleExportado(id) {
-  const all = await storageGet(STORAGE_KEY) || [];
-  const idx = all.findIndex(r => r.id === id);
-  if (idx < 0) return;
-  if (all[idx].exportado_afdt) {
-    all[idx].exportado_afdt = false;
-    all[idx].exportado_em = null;
+  const all = await storageGet(STORAGE_KEY, { cache: true }) || [];
+  const atual = all.find(r => r.id === id);
+  if (!atual) return;
+  let patch;
+  if (atual.exportado_afdt) {
+    patch = { exportado_afdt: false, exportado_em: null };
     showToast('Marcação de exportado removida.', 'info');
   } else {
-    all[idx].exportado_afdt = true;
-    all[idx].exportado_em = new Date().toISOString();
+    patch = { exportado_afdt: true, exportado_em: new Date().toISOString() };
     showToast('Marcado como exportado.', 'info');
   }
-  await storageSet(STORAGE_KEY, all);
+  await storagePatchRegistro(id, patch);
   renderValidacao();
 }
 
@@ -4722,6 +4800,8 @@ let bkResultado = null;
 function bkInfo() {
   const el = document.getElementById('bk-ultima');
   el.textContent = JOR_BANCO ? 'Última atualização: ' + Object.entries(JOR_BANCO).map(([e, v]) => e + ' em ' + fmtDataHora(v.atualizado_em) + ' (' + (v.atualizado_por || '') + ')').join(' · ') : 'Jornadas atuais: versão embutida no app (backup de 05/10/2026).';
+  const elEmp = document.getElementById('jor-exp-emp');
+  if (elEmp) elEmp.textContent = currentEmpresa;
 }
 async function bkLerTabelas(file, progresso) {
   const QUER = { EPG: ['CODIGO','PIS','DTRESCISAO','NOME'], HOR: ['CODIGO','NOME','ESCALA'], DHO: ['HOR_CODIGO','ORDEM'],
@@ -4827,9 +4907,10 @@ async function bkAnalisar() {
 async function bkGravarJornadas() {
   if (!cadEhAdmin() || !bkResultado) return;
   const r = bkResultado;
-  if (!confirm('Substituir as jornadas da ' + r.emp + ' pelas do backup? Todos os gestores passam a ver na hora.')) return;
+  if (!confirm('Substituir as jornadas da ' + r.emp + ' pelas desta importação? Todos os gestores passam a ver na hora.')) return;
   try {
-    const reg = { J: r.J, F: r.F, atualizado_em: new Date().toISOString(), atualizado_por: currentUser.nome, arquivo: (document.getElementById('bk-arquivo').files[0] || {}).name || '' };
+    const arquivoOrigem = (document.getElementById('bk-arquivo').files[0] || document.getElementById('jor-imp-arquivo').files[0] || {}).name || '';
+    const reg = { J: r.J, F: r.F, atualizado_em: new Date().toISOString(), atualizado_por: currentUser.nome, arquivo: arquivoOrigem };
     await cadPut('jornadas/' + r.emp, reg);
     aplicarJornadasBanco({ ...(JOR_BANCO || {}), [r.emp]: reg });
     showToast('✅ Jornadas da ' + r.emp + ' atualizadas.', 'success'); bkInfo();
@@ -4842,6 +4923,85 @@ async function bkGravarPis() {
   for (const x of bkResultado.pisDif) { try { await fcGravar(x.codigo, { pis: x.fortes }); ok++; } catch (e) { falhas.push(x.codigo); } }
   showToast('✅ ' + ok + ' PIS corrigido(s)' + (falhas.length ? ' — falhou: ' + falhas.join(', ') : '.'), falhas.length ? 'error' : 'success');
   bkResultado.pisDif = bkResultado.pisDif.filter(x => falhas.includes(x.codigo));
+}
+
+// ─────────────────────────────────────────────
+//  JORNADAS — EXPORTAR/IMPORTAR POR PLANILHA EXCEL
+//  Mesmo destino do backup do Fortes acima (/jornadas/{empresa}: J + F) — a importação
+//  monta um objeto no mesmo formato de bkMontar() e reaproveita bkGravarJornadas(),
+//  então tem a mesma confirmação antes de gravar.
+// ─────────────────────────────────────────────
+function jorExportarExcel() {
+  if (typeof XLSX === 'undefined') { showToast('Biblioteca de Excel não carregou. Verifique sua internet e recarregue a página.', 'error'); return; }
+  const linhasJor = [];
+  Object.entries(JORNADAS).forEach(([filial, lista]) => {
+    lista.filter(j => (j.empresa || 'GBEX') === currentEmpresa).forEach(j => {
+      j.linhas.forEach(l => {
+        linhasJor.push({
+          'Grupo': j.grupo, 'Nome': j.nome || '', 'Filial': filial, 'Escala': j.escala || 'Semanal', 'Semana': j.semana || '',
+          'Dias': l.dias || '', 'Entrada': l.e1 || '', 'Saída Intervalo': l.s1 || '', 'Retorno': l.e2 || '', 'Saída': l.s2 || '', 'Horas/dia': l.hdia || ''
+        });
+      });
+    });
+  });
+  const linhasFunc = Object.entries(JORNADA_FUNC)
+    .filter(([cod]) => (cod.startsWith('GBLOG_') ? 'GBLOG' : 'GBEX') === currentEmpresa)
+    .map(([cod, grupo]) => {
+      const f = buscarFunc(cod, currentEmpresa) || {};
+      return { 'Código': cod, 'Nome': f.nome || '', 'Filial': f.filial || '', 'Setor': f.setor || '', 'Jornada (Grupo)': grupo };
+    });
+  if (!linhasJor.length && !linhasFunc.length) { showToast('Nenhuma jornada cadastrada para ' + currentEmpresa + ' ainda.', 'error'); return; }
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(linhasJor), 'Jornadas');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(linhasFunc), 'Funcionarios');
+  XLSX.writeFile(wb, 'Jornadas_' + currentEmpresa + '.xlsx');
+  showToast('✅ Excel exportado: ' + linhasJor.length + ' linha(s) de jornada, ' + linhasFunc.length + ' funcionário(s).', 'success');
+}
+
+async function jorImportarAnalisar() {
+  const inp = document.getElementById('jor-imp-arquivo'), out = document.getElementById('jor-imp-preview');
+  bkResultado = null; if (!inp.files.length) return;
+  if (typeof XLSX === 'undefined') { out.innerHTML = '<span style="color:var(--red)">Biblioteca de Excel não carregou — recarregue a página.</span>'; return; }
+  try {
+    const buf = await inp.files[0].arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+    const shJor = wb.Sheets['Jornadas'], shFunc = wb.Sheets['Funcionarios'];
+    if (!shJor || !shFunc) throw new Error('a planilha precisa ter as abas "Jornadas" e "Funcionarios" — use o botão Exportar para gerar o modelo');
+    const linhasJor = XLSX.utils.sheet_to_json(shJor);
+    const linhasFunc = XLSX.utils.sheet_to_json(shFunc);
+    const J = {}; const grupos = new Map();
+    linhasJor.forEach(l => {
+      const filial = String(l['Filial'] || '').trim();
+      const grupo = String(l['Grupo'] || '').trim();
+      if (!filial || !grupo) return;
+      const k = filial + '|' + grupo;
+      if (!grupos.has(k)) {
+        const j = { grupo, nome: String(l['Nome'] || '').trim(), escala: String(l['Escala'] || 'Semanal').trim(), semana: String(l['Semana'] || '').trim(), codigos: [grupo], linhas: [], empresa: currentEmpresa };
+        grupos.set(k, j);
+        (J[filial] = J[filial] || []).push(j);
+      }
+      grupos.get(k).linhas.push({
+        dias: String(l['Dias'] || '').trim(), e1: String(l['Entrada'] || '').trim(), s1: String(l['Saída Intervalo'] || '').trim(),
+        e2: String(l['Retorno'] || '').trim(), s2: String(l['Saída'] || '').trim(), hdia: String(l['Horas/dia'] || '').trim()
+      });
+    });
+    const F = {};
+    linhasFunc.forEach(l => {
+      const cod = String(l['Código'] || '').trim();
+      const grupo = String(l['Jornada (Grupo)'] || '').trim();
+      if (cod && grupo) F[cod] = grupo;
+    });
+    if (!Object.keys(J).length) throw new Error('nenhuma linha de jornada válida encontrada na aba "Jornadas"');
+    bkResultado = { emp: currentEmpresa, J, F, qtdFunc: Object.keys(F).length, pisDif: [] };
+    const atual = Object.values(JORNADAS).flat().filter(j => (j.empresa || 'GBEX') === currentEmpresa).length;
+    const novo = Object.values(J).flat().length;
+    const mudou = Object.keys({ ...JORNADA_FUNC, ...F }).filter(c => (c.startsWith('GBLOG_') ? 'GBLOG' : 'GBEX') === currentEmpresa && JORNADA_FUNC[c] !== F[c]);
+    out.innerHTML = '<b>Empresa: ' + currentEmpresa + '</b> · ' + bkResultado.qtdFunc + ' funcionário(s) com jornada na planilha · ' + novo + ' horário(s) (hoje no app: ' + atual + ')<br>' +
+      '<b style="color:var(--yellow)">' + mudou.length + '</b> funcionário(s) com jornada diferente da que está no app' +
+      '<br><button class="btn-afdt" onclick="bkGravarJornadas()" style="margin:6px 0 14px">Atualizar jornadas da ' + currentEmpresa + '</button>';
+  } catch (e) {
+    out.innerHTML = '<span style="color:var(--red)">Erro ao ler a planilha: ' + cadEsc(e.message) + '</span>';
+  }
 }
 
 // Qualquer usuário troca a própria senha (o admin não consegue trocar a de outra pessoa pelo navegador)
