@@ -575,7 +575,7 @@
         <button class="empresa-btn gblog" id="btn-gblog" onclick="setEmpresa('GBLOG')">GBLOG</button>
       </div>
       <span class="topbar-user">Olá, <strong id="topbar-nome">—</strong></span>
-      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v91</span>
+      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v92</span>
       <button class="btn-ghost" onclick="trocarMinhaSenha()" title="Trocar minha senha">🔑</button>
       <button class="btn-ghost" onclick="doLogout()">Sair</button>
     </div>
@@ -662,6 +662,13 @@
         <div class="field" style="margin-bottom:20px">
           <label>Observação</label>
           <textarea id="f-obs" placeholder="Ex: Colaborador chegou mais cedo para atender demanda urgente." onkeydown="onObsKey(event)"></textarea>
+        </div>
+
+        <!-- Anexo do atestado (só aparece com tipo Atestado) -->
+        <div class="field" id="bloco-anexo" style="margin-bottom:20px;display:none">
+          <label>Anexar atestado (obrigatório) — PDF ou foto, até 8MB</label>
+          <input type="file" id="f-anexo" accept="application/pdf,image/*">
+          <div id="f-anexo-info" style="font-size:12px;color:var(--text-muted);margin-top:4px"></div>
         </div>
 
         <div style="display:flex; justify-content:flex-end;">
@@ -1344,6 +1351,16 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-espelho">
+  <div class="modal" style="width:620px">
+    <div class="modal-title">👁 Espelho de ponto simulado</div>
+    <div id="espelho-corpo"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="pfFecharEspelho()">Fechar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
@@ -1983,6 +2000,12 @@ function setTipo(btn) {
   saiEl.disabled = !isLanc;
   entEl.value = '';
   saiEl.value = '';
+  const isAtestado = currentTipo === 'atestado';
+  document.getElementById('bloco-anexo').style.display = isAtestado ? '' : 'none';
+  if (!isAtestado) {
+    document.getElementById('f-anexo').value = '';
+    document.getElementById('f-anexo-info').textContent = '';
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -2203,6 +2226,7 @@ document.addEventListener('click', e => {
   else if (action === 'del') deletarReg(id);
   else if (action === 'del-meus') deletarRegMeus(id);
   else if (action === 'pend-abrir') pfAbrir(btn.dataset.key, btn.dataset.codigo, btn.dataset.data, btn.dataset.hora, btn.dataset.nome);
+  else if (action === 'pend-espelho') pfVerEspelho(btn.dataset.key, btn.dataset.codigo, btn.dataset.data, btn.dataset.hora, btn.dataset.empresa);
   else if (action === 'pf-gravar') pfGravar(btn.dataset.key, btn.dataset.codigo, btn.dataset.data, '');
   else if (action === 'pf-fechar') pfFechar();
   else if (action === 'pf-dia') {
@@ -2442,6 +2466,41 @@ const TIPOS_DIA_INTEIRO = ['folga','falta','atestado','ferias','outro','desligam
 // cobrem o dia todo, mas a pendência original tem um horário real que nunca bateria com um fallback fixo
 const pendLancadosDiaSession = new Set();
 
+// ── Anexo de atestado (v92) ──
+// O arquivo em si NUNCA vai para /registros (nó já pesado e lido por inteiro a cada storageGet).
+// Fica num nó separado /anexos_atestado/{id}, lido e apagado pelo robô Python depois de enviar
+// o e-mail — /registros só guarda metadados leves (nome, tipo, se já foi enviado).
+const ANEXO_TAM_MAX = 8 * 1024 * 1024; // 8MB
+const ANEXO_NODE = 'anexos_atestado';
+
+function anexoValidar(file) {
+  if (!file) return 'Anexe o atestado (PDF ou foto) para justificar com este tipo.';
+  if (file.type !== 'application/pdf' && !file.type.startsWith('image/')) return 'Arquivo inválido: envie um PDF ou uma foto/imagem.';
+  if (file.size > ANEXO_TAM_MAX) return 'Arquivo muito grande (máx. ' + (ANEXO_TAM_MAX/1024/1024).toFixed(0) + 'MB).';
+  return null;
+}
+
+function anexoLer(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({ base64: reader.result.split(',')[1], nome: file.name, mime: file.type });
+    reader.onerror = () => reject(new Error('Falha ao ler o arquivo do anexo.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function anexoGravar(registroId, lido, meta) {
+  await fetch(FB_URL + '/' + ANEXO_NODE + '/' + registroId + '.json', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      base64: lido.base64, nome: lido.nome, mime: lido.mime,
+      codigo: meta.codigo, nome_func: meta.nome, filial: meta.filial, empresa: meta.empresa,
+      data: meta.data, gestor: meta.gestor, criado_em: new Date().toISOString()
+    })
+  });
+}
+
 async function renderPendencias() {
   if (!pendenciasCache) { carregarPendencias(); return; }
 
@@ -2563,6 +2622,7 @@ async function renderPendencias() {
     const btnAcao = resolvido
       ? '<span style="color:var(--green);font-size:12px;font-weight:700">✓ Resolvido</span>'
       : '<button class="btn-edit" data-action="pend-abrir" data-key="' + itemKey + '" data-codigo="' + item.codigo + '" data-data="' + (item.data_ref||'') + '" data-hora="' + (item.horario||'') + '" data-nome="' + (item.nome||'') + '" title="Lançar">▶</button>';
+    const btnEspelho = '<button class="btn-edit" data-action="pend-espelho" data-key="' + itemKey + '" data-codigo="' + item.codigo + '" data-data="' + (item.data_ref||'') + '" data-hora="' + (item.horario||'') + '" data-empresa="' + (item.empresa||currentEmpresa) + '" title="Ver espelho simulado">👁</button>';
 
     rows.push('<tr class="pend-row" id="prow_' + itemKey + '" style="' + (resolvido ? 'opacity:.55' : '') + '">' +
       '<td style="font-family:monospace">' + item.codigo + '</td>' +
@@ -2571,7 +2631,7 @@ async function renderPendencias() {
       '<td>' + pfDataCelula(item, func, dataKey) + '</td>' +
       '<td style="font-family:monospace">' + (item.horario||'—') + '</td>' +
       '<td>' + statusBadge + '</td>' +
-      '<td>' + btnAcao + '</td>' +
+      '<td>' + btnAcao + ' ' + btnEspelho + '</td>' +
     '</tr>');
 
     // Se este item tem o form aberto, adicionar linha de formulário
@@ -2609,6 +2669,10 @@ async function renderPendencias() {
             '<div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:160px">' +
               '<span style="font-size:10px;color:var(--text-muted)">Observação</span>' +
               '<textarea id="pf-obs-' + itemKey + '" data-key="' + itemKey + '" data-campo="obs" class="pf-field" placeholder="Opcional..."></textarea>' +
+            '</div>' +
+            '<div id="pf-anexo-bloco-' + itemKey + '" style="display:none;flex-direction:column;gap:2px">' +
+              '<span style="font-size:10px;color:var(--text-muted)">Anexar atestado (obrigatório, até 8MB)</span>' +
+              '<input type="file" id="pf-anexo-' + itemKey + '" accept="application/pdf,image/*">' +
             '</div>' +
             '<button class="btn-pend-gravar" data-action="pf-gravar" data-key="' + itemKey + '" data-codigo="' + item.codigo + '" data-data="' + (item.data_ref||'') + '">✓ Gravar</button>' +
             '<button class="btn-pend-cancel" data-action="pf-fechar">✕</button>' +
@@ -2684,6 +2748,130 @@ function pfAtualizarDia(key) {
     (n ? ' — aparece no espelho do turno de <b>' + pfFmtDia(pfMadrugada(n, hora) ? addDiaISO(seg.dataset.sel, -1) : seg.dataset.sel) + '</b>.' : '.');
 }
 
+// ── Espelho de ponto simulado (v92) ──
+// Visualização só de leitura, no mesmo layout do espelho impresso do Fortes (cabeçalho do
+// empregado + grade Dia/E.1/S.1/E.2/S.2 de todos os dias do mês). Cruza a jornada cadastrada
+// (o que é esperado) com as pendências em aberto (o que falta) — NÃO mostra a batida real,
+// porque o app não guarda isso, só recebe do robô as pendências extraídas do PDF do Fortes.
+const ESPELHO_DIAS_ORDEM = ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
+const ESPELHO_DOW_FORTES = ['DOM','SEG','TER','QUA','QUI','SEX','SAB'];
+
+// Interpreta o texto de "dias" gerado por bkMontar() (ponto_controle_92.html ~4950):
+// dia único, faixa "X a Y" ou lista "X, Y". Para escalas cíclicas ("Dia NN do ciclo"),
+// retorna null (não determinável) — nunca um palpite.
+function jorLinhaAplicavel(diasTxt, dowAbbr) {
+  if (!diasTxt) return false;
+  if (diasTxt.includes('do ciclo')) return null;
+  if (diasTxt.includes(' a ')) {
+    const [ini, fim] = diasTxt.split(' a ').map(s => s.trim());
+    const i1 = ESPELHO_DIAS_ORDEM.indexOf(ini), i2 = ESPELHO_DIAS_ORDEM.indexOf(fim), idx = ESPELHO_DIAS_ORDEM.indexOf(dowAbbr);
+    if (i1 < 0 || i2 < 0 || idx < 0) return false;
+    return idx >= i1 && idx <= i2;
+  }
+  return diasTxt.split(',').map(s => s.trim()).includes(dowAbbr);
+}
+
+function pfVerEspelho(key, codigo, dataRef, horario, empresa) {
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const fmtBR = iso => iso ? iso.split('-').reverse().join('/') : '——';
+  const func = buscarFunc(codigo, empresa || currentEmpresa);
+  const dataISO = dataRef ? dataRef.split('/').reverse().join('-') : dataHoje();
+  const [ano, mes, diaAlvo] = dataISO.split('-').map(Number);
+  const diasNoMes = new Date(ano, mes, 0).getDate();
+
+  // Pendências do mesmo funcionário no MÊS inteiro (não só o dia clicado), indexadas por dia
+  const pendPorDia = {};
+  ((pendenciasCache && pendenciasCache.itens) || []).forEach(it => {
+    if (it.codigo !== codigo || !it.data_ref) return;
+    const [d, m, a] = it.data_ref.split('/').map(Number);
+    if (a !== ano || m !== mes) return;
+    (pendPorDia[d] = pendPorDia[d] || new Set()).add(it.horario);
+  });
+
+  const filial = func ? func.filial.replace('FILIAL - ', '') : '—';
+  const desligamento = func ? DESLIGADOS[func.codigo] : null;
+
+  let corpo = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:13px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--border)">' +
+    '<div><b>Empregado:</b> ' + esc(codigo) + ' - ' + esc(func ? func.nome : codigo) + '</div>' +
+    '<div><b>Filial:</b> ' + esc(filial) + '</div>' +
+    '<div><b>Cargo:</b> ' + esc(func ? func.cargo : '—') + '</div>' +
+    '<div><b>Admissão:</b> ' + fmtBR(func ? func.admissao : '') + '</div>' +
+    '<div><b>Lotação:</b> ' + esc(func ? func.setor : '—') + '</div>' +
+    '<div><b>Rescisão:</b> ' + (desligamento ? fmtBR(desligamento.data) : '——') + '</div>' +
+    '<div><b>PIS:</b> ' + esc(func ? func.pis : '—') + '</div>' +
+  '</div>';
+
+  const grupo = func ? JORNADA_FUNC[func.codigo] : null;
+  const jornada = func && grupo ? jorBuscar(func.filial, grupo, func.empresa) : null;
+
+  let linhasHTML = '';
+  for (let d = 1; d <= diasNoMes; d++) {
+    const diaISO = ano + '-' + String(mes).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+    const dow = new Date(diaISO + 'T00:00:00').getDay();
+    const dowAbbr = ESPELHO_DIAS_ORDEM[(dow + 6) % 7];
+    const linha = jornada ? jornada.linhas.find(l => jorLinhaAplicavel(l.dias, dowAbbr) === true) : null;
+    const faltando = pendPorDia[d] || new Set();
+
+    // Turno noturno: um horário menor que o E.1 da mesma linha (ex.: E.1 18:00, S.2 04:00)
+    // já virou a madrugada do dia seguinte. O Fortes mantém essa batida na linha do dia em
+    // que o turno COMEÇOU (é o que o usuário chama de "limite da jornada") — mas o robô pode
+    // ter datado a pendência com o dia seguinte. Por segurança, checa os dois dias.
+    let linhaTemFalta = false;
+    const cel = h => {
+      if (!h) return '<td>—</td>';
+      const viraDia = linha && linha.e1 && h < linha.e1;
+      const faltandoProximoDia = viraDia ? (pendPorDia[d + 1] || new Set()) : null;
+      if (faltando.has(h) || (faltandoProximoDia && faltandoProximoDia.has(h))) {
+        linhaTemFalta = true;
+        return '<td style="background:var(--red);color:#fff;font-weight:700">' + esc(h) + '<br><span style="font-size:9px">FALTANDO</span></td>';
+      }
+      return '<td>' + esc(h) + '</td>';
+    };
+    let cels;
+    if (linha) {
+      cels = cel(linha.e1) + cel(linha.s1) + cel(linha.e2) + cel(linha.s2);
+    } else {
+      // Sem jornada mapeada pra esse dia (ciclo, sem cadastro, ou dia sem linha definida):
+      // mostra a(s) pendência(s) sem fingir saber em qual coluna (E1/S1/E2/S2) ela cairia.
+      const arr = [...faltando];
+      linhaTemFalta = arr.length > 0;
+      cels = [0,1,2,3].map(i => arr[i]
+        ? '<td style="background:var(--red);color:#fff;font-weight:700">' + esc(arr[i]) + '<br><span style="font-size:9px">FALTANDO</span></td>'
+        : '<td>—</td>').join('');
+    }
+    const alvo = d === diaAlvo;
+    // Só os dias relacionados a esta pendência (o que falta + o dia clicado na lista) ficam em
+    // destaque — o resto do mês vem esmaecido, só pra contexto, sem brigar visualmente no tema escuro.
+    const destaque = alvo || linhaTemFalta;
+    const estiloLinha = (destaque ? '' : 'opacity:.3') + (alvo ? ';outline:2px solid var(--accent)' : '');
+    const notaAlvo = (alvo && !linhaTemFalta) ? ' <span style="font-size:10px;color:var(--accent)">(pendência listada aqui — turno começou no dia anterior)</span>' : '';
+    linhasHTML += '<tr' + (alvo ? ' id="espelho-linha-alvo"' : '') + ' style="' + estiloLinha + '">' +
+      '<td>' + String(d).padStart(2,'0') + '-' + ESPELHO_DOW_FORTES[dow] + notaAlvo + '</td>' + cels + '</tr>';
+  }
+
+  corpo += '<div style="max-height:320px;overflow-y:auto">' +
+    '<table class="val-table"><thead><tr><th>Dia</th><th>E.1</th><th>S.1</th><th>E.2</th><th>S.2</th></tr></thead><tbody>' +
+    linhasHTML + '</tbody></table></div>';
+
+  if (func && JORNADA_FUNC[func.codigo] && !jornada) {
+    corpo += '<div style="font-size:12px;color:var(--text-muted);margin-top:8px">⚠️ Jornada cadastrada não encontrada para esta filial/empresa.</div>';
+  } else if (!jornada) {
+    corpo += '<div style="font-size:12px;color:var(--text-muted);margin-top:8px">⚠️ Jornada não cadastrada para este funcionário — os dias em vermelho mostram só o horário da pendência, sem o contexto previsto.</div>';
+  }
+
+  corpo += '<div style="margin-top:10px;font-size:11px;color:var(--text-muted);border-top:1px solid var(--border);padding-top:8px">' +
+    'Linhas esmaecidas = outros dias do mês, só de contexto. Vermelho = falta essa batida, segundo o Fortes. ' +
+    'Os demais horários da linha em destaque são o previsto pela jornada, não a batida real. Confira sempre o espelho real do Fortes antes de responder.</div>';
+
+  document.getElementById('espelho-corpo').innerHTML = corpo;
+  document.getElementById('modal-espelho').classList.add('open');
+  setTimeout(() => { const el = document.getElementById('espelho-linha-alvo'); if (el) el.scrollIntoView({ block: 'center' }); }, 0);
+}
+
+function pfFecharEspelho() {
+  document.getElementById('modal-espelho').classList.remove('open');
+}
+
 // ── Ocorrência de dia inteiro em turno noturno (correção 14/10) ──
 // Falta/Folga/Atestado... lançados num turno que vira a meia-noite também resolvem as batidas
 // da madrugada do dia seguinte (ex.: turno de 08/09 18:00–04:00 → pendência "09/09 04:00").
@@ -2711,6 +2899,15 @@ function pfTipoChange(key) {
     horarioEl.disabled = !isLanc;
     if (!isLanc) horarioEl.value = '';
     horarioEl.style.opacity = isLanc ? '1' : '0.35';
+  }
+  var anexoBloco = document.getElementById('pf-anexo-bloco-' + key);
+  if (anexoBloco) {
+    var isAtestado = tipo === 'atestado';
+    anexoBloco.style.display = isAtestado ? 'flex' : 'none';
+    if (!isAtestado) {
+      var anexoEl = document.getElementById('pf-anexo-' + key);
+      if (anexoEl) anexoEl.value = '';
+    }
   }
   pfAtualizarDia(key);
 }
@@ -2747,6 +2944,13 @@ async function pfGravar(key, codigo, dataRef, nome) {
 
   if (tipo === 'lancamento' && !horario) {
     showToast('Informe o horário.', 'error'); return;
+  }
+
+  let anexoFile = null;
+  if (tipo === 'atestado') {
+    anexoFile = (document.getElementById('pf-anexo-' + key)||{}).files?.[0];
+    const erroAnexo = anexoValidar(anexoFile);
+    if (erroAnexo) { showToast(erroAnexo, 'error'); return; }
   }
 
   // Buscar dados do funcionário
@@ -2803,6 +3007,11 @@ async function pfGravar(key, codigo, dataRef, nome) {
     ts: new Date().toISOString(),
     status: 'pendente'
   };
+  if (anexoFile) {
+    registro.anexo_nome = anexoFile.name;
+    registro.anexo_tipo = anexoFile.type;
+    registro.anexo_enviado = false;
+  }
 
   // Marcar no cache de sessão IMEDIATAMENTE antes de qualquer await
   // Usa o itemKey diretamente — é a chave certa, não depende de entrada/saida
@@ -2832,6 +3041,12 @@ async function pfGravar(key, codigo, dataRef, nome) {
   }
 
   await storageAppend(registro);
+  if (anexoFile) {
+    try {
+      const lido = await anexoLer(anexoFile);
+      await anexoGravar(id, lido, registro);
+    } catch (e) { showToast('Registro gravado, mas falhou ao anexar o atestado: ' + e.message, 'error'); }
+  }
   if (tipo === 'desligamento') {
     try { const n = await registrarDesligamento(func, dataISO, registro.id); showToast('Desligamento registrado — ' + n + ' pendência(s) apagada(s).', 'success'); }
     catch (e) { showToast('Lançamento gravado, mas falhou ao marcar o desligamento: ' + e.message, 'error'); }
@@ -2984,7 +3199,8 @@ async function renderMeus() {
       '<td style="white-space:nowrap"><strong>' + r.nome.split(' ').slice(0,2).join(' ') + '</strong></td>' +
       '<td><span class="badge badge-' + r.tipo + '">' + labelTipo(r.tipo) + '</span></td>' +
       '<td style="font-family:monospace">' + (r.entrada || (r.saida ? '' : '&mdash;')) + (r.saida ? (r.entrada ? ' &rarr; ' : '') + r.saida : '') + '</td>' +
-      '<td style="font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + (r.obs||'') + '">' + (r.obs||'&mdash;') + '</td>' +
+      '<td style="font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + (r.obs||'') + '">' + (r.obs||'&mdash;') +
+        (r.anexo_nome ? '<br><span style="font-size:10px;color:' + (r.anexo_enviado ? 'var(--green)' : 'var(--text-muted)') + '" title="' + r.anexo_nome + '">📎 ' + (r.anexo_enviado ? 'enviado' : 'aguardando envio') + '</span>' : '') + '</td>' +
       '<td style="font-size:12px;color:var(--text-muted);white-space:nowrap">' + (r.gestor ? r.gestor.split(' ')[0] : '&mdash;') +
         (r.ts ? '<br><span style="font-size:10px;opacity:.7">' + fmtDataHora(r.ts) + '</span>' : '') + '</td>' +
       '<td><div class="row-actions">' +
@@ -3115,6 +3331,13 @@ async function gravar() {
     showToast('Informe ao menos entrada ou saída.', 'error'); return;
   }
 
+  let anexoFile = null;
+  if (currentTipo === 'atestado') {
+    anexoFile = document.getElementById('f-anexo').files[0];
+    const erroAnexo = anexoValidar(anexoFile);
+    if (erroAnexo) { showToast(erroAnexo, 'error'); return; }
+  }
+
   // Pendência aberta do mesmo funcionário no dia (ou no dia seguinte, turno noturno)?
   // Lançar por aqui E pela aba Pendências mandava a mesma batida 2x para o Fortes.
   try {
@@ -3143,8 +3366,19 @@ async function gravar() {
     ts: new Date().toISOString(),
     status: 'pendente'
   };
+  if (anexoFile) {
+    registro.anexo_nome = anexoFile.name;
+    registro.anexo_tipo = anexoFile.type;
+    registro.anexo_enviado = false;
+  }
 
   await storageAppend(registro);
+  if (anexoFile) {
+    try {
+      const lido = await anexoLer(anexoFile);
+      await anexoGravar(id, lido, registro);
+    } catch (e) { showToast('Registro gravado, mas falhou ao anexar o atestado: ' + e.message, 'error'); }
+  }
   if (currentTipo === 'desligamento') {
     try { await registrarDesligamento(selectedFunc, data, registro.id); }
     catch (e) { showToast('Lançamento gravado, mas falhou ao marcar o desligamento: ' + e.message, 'error'); }
@@ -3155,6 +3389,8 @@ async function gravar() {
   document.getElementById('f-entrada').value = '';
   document.getElementById('f-saida').value = '';
   document.getElementById('f-obs').value = '';
+  document.getElementById('f-anexo').value = '';
+  document.getElementById('f-anexo-info').textContent = '';
   setTimeout(() => document.getElementById('f-matricula').focus(), 80);
 }
 
@@ -3501,6 +3737,7 @@ function closeModal() {
   document.getElementById('modal-editar').classList.remove('open');
 }
 document.getElementById('modal-editar').addEventListener('click', e => { if(e.target === e.currentTarget) closeModal(); });
+document.getElementById('modal-espelho').addEventListener('click', e => { if(e.target === e.currentTarget) pfFecharEspelho(); });
 
 // ─────────────────────────────────────────────
 //  IMPORTAÇÃO MANUAL DE PENDÊNCIAS (PDF)
