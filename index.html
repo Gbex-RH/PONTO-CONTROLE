@@ -575,7 +575,7 @@
         <button class="empresa-btn gblog" id="btn-gblog" onclick="setEmpresa('GBLOG')">GBLOG</button>
       </div>
       <span class="topbar-user">Olá, <strong id="topbar-nome">—</strong></span>
-      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v92</span>
+      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v93</span>
       <button class="btn-ghost" onclick="trocarMinhaSenha()" title="Trocar minha senha">🔑</button>
       <button class="btn-ghost" onclick="doLogout()">Sair</button>
     </div>
@@ -760,6 +760,8 @@
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
           <label style="font-size:12px;color:var(--text-muted);font-weight:600">Mês:</label>
           <select id="ho-meus-mes" onchange="hoRenderAdmin('ho-meus-lista', 'ho-meus-mes')"></select>
+          <label style="display:flex;gap:6px;align-items:center;font-size:12px;color:var(--text-muted);cursor:pointer;margin-left:8px">
+            <input type="checkbox" id="ho-mostrar-ex" onchange="hoRenderAdmin('ho-meus-lista', 'ho-meus-mes')"> Mostrar ex-home office</label>
         </div>
         <div id="ho-meus-lista"><span style="font-size:13px;color:var(--text-dim)">Carregando...</span></div>
       </div>
@@ -1438,7 +1440,7 @@ async function carregarCadastrosApp() {
     HO_BANCO = ho && Object.keys(ho).length ? ho : null;
     if (HO_BANCO) {
       HO_FUNCIONARIOS.length = 0;
-      Object.entries(HO_BANCO).forEach(([cod, v]) => HO_FUNCIONARIOS.push({ codigo: cod, nome: v.nome, empresa: v.empresa || 'GBEX' }));
+      Object.entries(HO_BANCO).forEach(([cod, v]) => { if (v && !v.saiu_em) HO_FUNCIONARIOS.push({ codigo: cod, nome: v.nome, empresa: v.empresa || 'GBEX' }); });
     }
   } catch (e) { console.warn('Erro ao carregar cadastros do banco:', e); }
 }
@@ -4350,7 +4352,15 @@ async function gerarAFDTHomeOffice() {
   const resumoPorFunc = [];
   const erros = [];
 
-  for (const func of HO_FUNCIONARIOS) {
+  for (const func of await hoListaComEx()) {
+    // Ex-home office: só entra se tiver batida no mês (senão nem aparece no resumo)
+    if (func.ex) {
+      try {
+        const r0 = await fetch(FB_URL + '/' + HO_NODE + '/' + func.codigo + '.json');
+        const d0 = r0.ok ? await r0.json() : null;
+        if (!d0 || !Object.values(d0).some(v => v && v.data && v.data.startsWith(mes))) continue;
+      } catch (e) { continue; }
+    }
     const pis = pisMap[func.codigo];
     if (!pis) { erros.push(func.nome + ' (' + func.codigo + ') sem PIS cadastrado'); continue; }
     const pf = pis.padStart(11,'0');
@@ -4993,10 +5003,13 @@ function hoCadRender() {
     : '<span style="font-size:13px;color:var(--text-dim)">Ninguém em home office.</span>';
 }
 // Grava a lista inteira (a 1ª gravação copia a lista fixa para o banco)
-async function hoCadGravarLista(lista) {
+async function hoCadGravarLista(lista, novosEx) {
   const obj = {};
+  // Quem já saiu continua guardado (com saiu_em), para as batidas antigas seguirem consultáveis
+  Object.entries(HO_BANCO || {}).forEach(([cod, v]) => { if (v && v.saiu_em) obj[cod] = v; });
+  Object.entries(novosEx || {}).forEach(([cod, v]) => { obj[cod] = v; });
   lista.forEach(h => { const f = FUNCIONARIOS.find(x => x.codigo === h.codigo) || {};
-    obj[h.codigo] = { nome: h.nome, empresa: h.empresa || 'GBEX', filial: f.filial || '', desde: (HO_BANCO && HO_BANCO[h.codigo] && HO_BANCO[h.codigo].desde) || new Date().toISOString().slice(0, 10) }; });
+    obj[h.codigo] = { nome: h.nome, empresa: h.empresa || 'GBEX', filial: f.filial || '', desde: (HO_BANCO && HO_BANCO[h.codigo] && !HO_BANCO[h.codigo].saiu_em && HO_BANCO[h.codigo].desde) || new Date().toISOString().slice(0, 10) }; });
   await cadPut('home_office', Object.keys(obj).length ? obj : null);
   HO_BANCO = Object.keys(obj).length ? obj : null;
   HO_FUNCIONARIOS.length = 0; lista.forEach(h => HO_FUNCIONARIOS.push(h));
@@ -5019,7 +5032,10 @@ async function hoCadRetirar(cod) {
   const h = HO_FUNCIONARIOS.find(x => x.codigo === cod); if (!h) return;
   if (!confirm('Retirar ' + h.nome + ' do home office?\n\nANTES: gere o "AFDT Home Office" do período em que ele bateu pelo app (aba Validação), senão essas batidas não vão para o Fortes.\n\nDepois: desative o login dele na aba Logins.')) return;
   try {
-    await hoCadGravarLista(HO_FUNCIONARIOS.filter(x => x.codigo !== cod));
+    const f = FUNCIONARIOS.find(x => x.codigo === cod) || {};
+    const ex = { [cod]: { nome: h.nome, empresa: h.empresa || 'GBEX', filial: f.filial || '',
+      desde: (HO_BANCO && HO_BANCO[cod] && HO_BANCO[cod].desde) || '', saiu_em: new Date().toISOString().slice(0, 10) } };
+    await hoCadGravarLista(HO_FUNCIONARIOS.filter(x => x.codigo !== cod), ex);
     showToast('✅ Retirado do home office.', 'success'); hoCadRender();
   } catch (e) { showToast('Erro: ' + e.message, 'error'); }
 }
@@ -5512,6 +5528,31 @@ const HO_FUNCIONARIOS = [
   { codigo: 'GBLOG_000001', nome: 'JOSE VINICIUS CORREIA DA SILVA', empresa: 'GBLOG' }
 ];
 
+// Ativos + ex-home office. Ex = quem tem saiu_em em /home_office OU quem tem batidas em
+// /batidas_homeoffice mas não está mais na lista (ex.: retirado antes desta versão).
+async function hoListaComEx() {
+  const lista = HO_FUNCIONARIOS.map(f => ({ ...f }));
+  const ja = new Set(lista.map(f => f.codigo));
+  Object.entries(HO_BANCO || {}).forEach(([cod, v]) => {
+    if (v && v.saiu_em && !ja.has(cod)) { lista.push({ codigo: cod, nome: v.nome, empresa: v.empresa || 'GBEX', ex: true, saiu_em: v.saiu_em }); ja.add(cod); }
+  });
+  try {
+    const r = await fetch(FB_URL + '/' + HO_NODE + '.json?shallow=true');
+    const cods = r.ok ? Object.keys((await r.json()) || {}) : [];
+    cods.forEach(cod => {
+      if (ja.has(cod)) return;
+      const f = FUNCIONARIOS.find(x => x.codigo === cod) || {};
+      lista.push({ codigo: cod, nome: f.nome || cod, empresa: cod.startsWith('GBLOG_') ? 'GBLOG' : 'GBEX', ex: true, saiu_em: '' });
+      ja.add(cod);
+    });
+  } catch (e) { console.warn('ex-home office:', e); }
+  return lista;
+}
+function hoRotuloEx(f) {
+  if (!f.ex) return '';
+  return ' <span style="font-size:11px;font-weight:400;color:var(--text-muted)">(ex-home office' + (f.saiu_em ? ' — saiu em ' + f.saiu_em.split('-').reverse().slice(0, 2).join('/') : '') + ')</span>';
+}
+
 async function hoRenderAdmin(listaElId, mesElId) {
   const out = document.getElementById(listaElId);
   if (!out) return;
@@ -5545,7 +5586,9 @@ async function hoRenderAdmin(listaElId, mesElId) {
 
   // try/catch em volta de TODO o corpo: o cartão nunca fica presto em "Carregando..."
   try {
-    const resultados = await Promise.allSettled(HO_FUNCIONARIOS.map(async f => {
+    const ckEx = document.getElementById('ho-mostrar-ex');
+    const listaHO = (ckEx && ckEx.checked) ? await hoListaComEx() : HO_FUNCIONARIOS;
+    const resultados = await Promise.allSettled(listaHO.map(async f => {
       const data = await buscar(f.codigo);
       const porDia = {};
       Object.entries(data || {}).forEach(([id, v]) => {
@@ -5557,11 +5600,13 @@ async function hoRenderAdmin(listaElId, mesElId) {
 
     const blocos = resultados.map((r, i) => r.status === 'fulfilled'
       ? r.value
-      : { f: HO_FUNCIONARIOS[i], dias: [], porDia: {},
-          erro: (r.reason && r.reason.message) || 'falha ao carregar' });
+      : { f: listaHO[i], dias: [], porDia: {},
+          erro: (r.reason && r.reason.message) || 'falha ao carregar' })
+      // Ex-home office só aparece no mês em que tem batida
+      .filter(b => !b.f.ex || b.erro || (b.dias && b.dias.length));
 
     resultados.forEach((r, i) => {
-      if (r.status === 'rejected') console.error('hoRenderAdmin —', HO_FUNCIONARIOS[i].codigo, r.reason);
+      if (r.status === 'rejected') console.error('hoRenderAdmin —', listaHO[i].codigo, r.reason);
     });
 
     const algumErro = blocos.some(b => b.erro);
@@ -5574,7 +5619,7 @@ async function hoRenderAdmin(listaElId, mesElId) {
     }
 
     out.innerHTML = blocos.map(b => {
-      const cab = '<div style="font-size:13px;font-weight:700;margin-bottom:6px">👤 ' + b.f.codigo + ' — ' + b.f.nome + '</div>';
+      const cab = '<div style="font-size:13px;font-weight:700;margin-bottom:6px">👤 ' + b.f.codigo + ' — ' + b.f.nome + hoRotuloEx(b.f) + '</div>';
       if (b.erro) {
         return '<div style="margin-bottom:14px">' + cab +
           '<div style="font-size:12px;color:var(--red)">Erro ao carregar: ' + b.erro + '</div></div>';
