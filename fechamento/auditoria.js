@@ -21,7 +21,7 @@
   CAT.CALCULO = '5. Cálculo do Fortes';
 
   // Ad.Not sem hora reduzida: 22:00–05:00 de relógio + prorrogação após 05:00.
-  // O Fortes só prorroga se a entrada foi até 22:00 (Paulo Ricardo 04/09 e Anderson 25/09/2026).
+  // O Fortes só prorroga se a entrada foi até 22:00 (casos de 04/09 e 25/09/2026).
   function adNotEsperado(b, comoFortes = true) {
     if (b.length < 2 || b.length % 2) return null;
     const lin = []; let base = b[0];
@@ -55,6 +55,12 @@
         soma.trab += trab; soma.he += he; soma.at += at; soma.adn += adn;
         const fer = /FERIADO/.test(d.det), b = d.bat, pct = String(d.hExtra || '').match(/\((\d+)%\)/);
         const nums = `PREV ${d.prev || '-'} · TRAB ${d.trab || '-'} · HE ${d.hExtra || '-'} · AT ${d.atSa || '-'} · Ad.Not ${d.adNot || '-'}`;
+        // Dia com batida faltando (casa vazia "-----" ou AUSÊNCIA DE BATIDA): os números do Fortes são provisórios.
+        // Apontar "TRAB diferente" / "AT diferente do saldo" aí era alarme falso — a pendência do dia já está na lista.
+        if ((d.vazios && d.vazios.length) || /AUS[ÊE]NCIA DE BATIDA/.test(d.det)) {
+          if (he && (!pct || pct[1] !== '100')) { if (faixa.unica) expUnica += he; else { exp50 += Math.min(he, 120); expExc += Math.max(0, he - 120); } }
+          continue;
+        }
 
         if (b.length >= 2 && b.length % 2 === 0) {
           let calc = 0;

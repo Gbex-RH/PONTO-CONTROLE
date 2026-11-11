@@ -8,13 +8,13 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-<script src="motor.js?v=20261023c"></script>
-<script src="auditoria.js?v=20261023c"></script>
-<script src="motoristas.js?v=20261023c"></script>
-<script src="planilhas.js?v=20261023c"></script>
-<script src="backup.js?v=20261023c"></script>
-<script src="ti.js?v=20261023c"></script>
-<script src="simulacao.js?v=20261023c"></script>
+<script src="motor.js?v=20261111a"></script>
+<script src="auditoria.js?v=20261111a"></script>
+<script src="motoristas.js?v=20261111a"></script>
+<script src="planilhas.js?v=20261111a"></script>
+<script src="backup.js?v=20261111a"></script>
+<script src="ti.js?v=20261111a"></script>
+<script src="simulacao.js?v=20261111a"></script>
 <style>
   :root { --azul:#1f4e78; --borda:#d6dde6; --fundo:#f5f6f8; }
   body { font-family: Segoe UI, Arial, sans-serif; background: var(--fundo); margin: 0; color: #1b2b3a; }
@@ -244,7 +244,10 @@ $('btn-processar').onclick = () => {
   $('box-mot').style.display = motor3 ? 'block' : 'none';
   if (motor3) $('mot-resumo').textContent = motor3.espera.map(m => `${m.nome}: ${Motor.dur(m.carga + m.posto)}`).join(' · ');
   filtroCat = null; $('resultado').style.display = 'block'; render();
-  $('status').textContent = `✓ ${itens.length} itens.`;
+  // respostas/batidas de outro mês não entram (antes eram aplicadas no mesmo dia do mês errado)
+  const foraVal = dados.validacao.length - Motor.filtrarMes(dados.validacao, dados.espelho).length;
+  const foraAfdt = (dados.afdt || []).length - Motor.filtrarMes(dados.afdt || [], dados.espelho).length;
+  $('status').textContent = `✓ ${itens.length} itens.` + (foraVal || foraAfdt ? ` ⚠ Ignorados por serem de outro mês: ${foraVal} resposta(s) e ${foraAfdt} batida(s) do AFDT.` : '');
 };
 
 function render() {
