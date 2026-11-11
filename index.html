@@ -575,7 +575,7 @@
         <button class="empresa-btn gblog" id="btn-gblog" onclick="setEmpresa('GBLOG')">GBLOG</button>
       </div>
       <span class="topbar-user">Olá, <strong id="topbar-nome">—</strong></span>
-      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v94</span>
+      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v95</span>
       <button class="btn-ghost" onclick="trocarMinhaSenha()" title="Trocar minha senha">🔑</button>
       <button class="btn-ghost" onclick="doLogout()">Sair</button>
     </div>
@@ -632,7 +632,7 @@
         <div class="form-grid" style="margin-bottom:16px; grid-template-columns: 1fr 1fr 1fr;">
           <div class="field">
             <label>Data de referência</label>
-            <input type="date" id="f-data" onkeydown="onDataKey(event)">
+            <input type="date" id="f-data" onkeydown="onDataKey(event)" onchange="atestadoSincAte()">
             <div class="input-hint">Padrão: ontem</div>
           </div>
           <div class="field" id="bloco-entrada">
@@ -669,6 +669,9 @@
           <label>Anexar atestado (obrigatório) — PDF ou foto, até 8MB</label>
           <input type="file" id="f-anexo" accept="application/pdf,image/*">
           <div id="f-anexo-info" style="font-size:12px;color:var(--text-muted);margin-top:4px"></div>
+          <label style="margin-top:12px;display:block">Afastado até (último dia do atestado)</label>
+          <input type="date" id="f-ate" oninput="this.dataset.manual='1'">
+          <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Atestado de 1 dia: deixe igual à data acima. Mais de 1 dia: informe o último dia — o mesmo anexo vale para todos os dias, não precisa anexar de novo.</div>
         </div>
 
         <div style="display:flex; justify-content:flex-end;">
@@ -2021,7 +2024,16 @@ function setTipo(btn) {
   if (!isAtestado) {
     document.getElementById('f-anexo').value = '';
     document.getElementById('f-anexo-info').textContent = '';
+    document.getElementById('f-ate').value = '';
+  } else {
+    document.getElementById('f-ate').value = document.getElementById('f-data').value || '';
   }
+  delete document.getElementById('f-ate').dataset.manual;
+}
+// "Afastado até" acompanha a data do lançamento enquanto o gestor não mexer nele
+function atestadoSincAte() {
+  const ate = document.getElementById('f-ate');
+  if (currentTipo === 'atestado' && !ate.dataset.manual) ate.value = document.getElementById('f-data').value || '';
 }
 
 // ─────────────────────────────────────────────
@@ -2509,9 +2521,88 @@ async function anexoGravar(registroId, lido, meta) {
     body: JSON.stringify({
       base64: lido.base64, nome: lido.nome, mime: lido.mime,
       codigo: meta.codigo, nome_func: meta.nome, filial: meta.filial, empresa: meta.empresa,
-      data: meta.data, gestor: meta.gestor, criado_em: new Date().toISOString()
+      data: meta.data, gestor: meta.gestor, criado_em: new Date().toISOString(),
+      ...(meta.periodo_ini ? { periodo_ini: meta.periodo_ini, periodo_fim: meta.periodo_fim } : {})
     })
   });
+}
+
+// ── Atestado de vários dias (v95) ──
+// O gestor informa "Afastado até" e anexa UMA vez. O app grava um registro de atestado por dia
+// do período (todos com o mesmo atestado_grupo) e um único anexo (no registro do 1º dia).
+// Um registro por dia de propósito: o robô (get_resolvidos → por_dia), a limpeza automática de
+// carregarPendencias e pendLancadosDiaSession já tratam cada dia sem regra nova.
+const ATESTADO_MAX_DIAS = 60;
+function atestadoBR(iso) { return iso.split('-').reverse().join('/'); }
+
+// Devolve a lista de dias (ISO) do atestado, ou null se inválido/cancelado pelo gestor.
+function atestadoPeriodo(ini, ate, nome) {
+  if (!ate || ate === ini) return [ini];
+  if (ate < ini) { showToast('"Afastado até" não pode ser antes do dia do atestado.', 'error'); return null; }
+  const dias = [];
+  for (let d = ini; d <= ate && dias.length <= ATESTADO_MAX_DIAS; d = addDiaISO(d, 1)) dias.push(d);
+  if (dias.length > ATESTADO_MAX_DIAS) {
+    showToast('Período muito longo (máx. ' + ATESTADO_MAX_DIAS + ' dias). Confira a data "Afastado até".', 'error'); return null;
+  }
+  if (!confirm('ATESTADO DE ' + dias.length + ' DIAS\n\n' + nome + '\nDe ' + atestadoBR(ini) + ' até ' + atestadoBR(ate) +
+    '\n\nConfira com o atestado em mãos. Todos esses dias ficam justificados e o RH recebe um único e-mail com o anexo.' +
+    '\n\nOK = está certo · Cancelar = corrigir a data')) return null;
+  return dias;
+}
+
+// SÍNCRONA (chamar antes de qualquer await): marca os dias no cache de sessão e devolve as
+// chaves das pendências já abertas desses dias (para apagar do banco depois).
+function atestadoMarcarSessao(codigoPend, dias) {
+  const chaves = [];
+  dias.forEach(d => pendLancadosDiaSession.add(codigoPend + '_' + d));
+  if (pendenciasCache && pendenciasCache.itens) pendenciasCache.itens.forEach(it => {
+    if (it.codigo !== codigoPend || !it.data_ref) return;
+    if ((it.empresa || 'GBEX') !== currentEmpresa) return;
+    const dk = it.data_ref.split('/').reverse().join('-');
+    if (!dias.includes(dk)) return;
+    const k = it.codigo + '_' + dk + '_' + (it.horario || '0000').replace(':', '-');
+    pendLancadosSession.add(k);
+    it.reimportada = false;
+    chaves.push(k);
+  });
+  return chaves;
+}
+
+// Grava os registros dos demais dias do período (do 2º em diante). Devolve quantos gravou.
+// Dia que já tem atestado lançado para a mesma pessoa é pulado (não duplica).
+async function atestadoGravarDiasExtras(base, dias, codigoPend, func) {
+  const cods = [base.codigo, codigoPend];
+  let jaTem = new Set();
+  try {
+    const all = await storageGet(STORAGE_KEY) || [];
+    all.forEach(r => {
+      if (r && r.tipo === 'atestado' && cods.includes(r.codigo) && (r.empresa || 'GBEX') === (base.empresa || 'GBEX') && r.id !== base.id)
+        jaTem.add(r.data_ref || r.data);
+    });
+  } catch (e) { /* sem leitura — grava todos */ }
+  let n = 0;
+  for (const d of dias.slice(1)) {
+    if (jaTem.has(d)) continue;
+    // Turno noturno com jornada conhecida: a madrugada de D+1 pertence ao turno de D
+    let extra = [];
+    if (func && jorNoturna(func.codigo) && pendenciasCache) {
+      extra = pfCoberturaDiaInteiro(codigoPend, d, '', func).extras
+        .map(it => it.codigo + '_' + it.data_ref.split('/').reverse().join('-') + '_' + (it.horario || '0000').replace(':', '-'));
+      extra.forEach(k => { pendLancadosSession.add(k); fetch(FB_URL + '/pendencias_abertas/' + k + '.json', { method: 'DELETE' }).catch(() => {}); });
+    }
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 5) + n;
+    await storageAppend({
+      id, data: d, data_ref: d, tipo: 'atestado',
+      codigo: base.codigo, nome: base.nome, filial: base.filial, setor: base.setor, cargo: base.cargo,
+      empresa: base.empresa, entrada: '', saida: '', obs: base.obs || '',
+      ...(extra.length ? { batidas_extra: extra } : {}),
+      gestor: base.gestor, gestor_cpf: base.gestor_cpf, ts: base.ts, status: 'pendente',
+      atestado_grupo: base.id, atestado_extra: true,
+      periodo_ini: base.periodo_ini, periodo_fim: base.periodo_fim
+    });
+    n++;
+  }
+  return n;
 }
 
 async function renderPendencias() {
@@ -2686,6 +2777,10 @@ async function renderPendencias() {
             '<div id="pf-anexo-bloco-' + itemKey + '" style="display:none;flex-direction:column;gap:2px">' +
               '<span style="font-size:10px;color:var(--text-muted)">Anexar atestado (obrigatório, até 8MB)</span>' +
               '<input type="file" id="pf-anexo-' + itemKey + '" accept="application/pdf,image/*">' +
+            '</div>' +
+            '<div id="pf-ate-bloco-' + itemKey + '" style="display:none;flex-direction:column;gap:2px">' +
+              '<span style="font-size:10px;color:var(--text-muted)" title="Atestado de mais de 1 dia: informe o último dia. O mesmo anexo vale para todos os dias.">Afastado até (último dia)</span>' +
+              '<input type="date" id="pf-ate-' + itemKey + '" value="' + dataKey + '" min="' + dataKey + '" data-ini="' + dataKey + '" class="pf-field">' +
             '</div>' +
             '<button class="btn-pend-gravar" data-action="pf-gravar" data-key="' + itemKey + '" data-codigo="' + item.codigo + '" data-data="' + (item.data_ref||'') + '">✓ Gravar</button>' +
             '<button class="btn-pend-cancel" data-action="pf-fechar">✕</button>' +
@@ -2921,6 +3016,12 @@ function pfTipoChange(key) {
       var anexoEl = document.getElementById('pf-anexo-' + key);
       if (anexoEl) anexoEl.value = '';
     }
+    var ateBloco = document.getElementById('pf-ate-bloco-' + key);
+    if (ateBloco) {
+      ateBloco.style.display = isAtestado ? 'flex' : 'none';
+      var ateEl = document.getElementById('pf-ate-' + key);
+      if (ateEl && !isAtestado) ateEl.value = ateEl.dataset.ini || '';
+    }
   }
   pfAtualizarDia(key);
 }
@@ -2978,6 +3079,7 @@ async function pfGravar(key, codigo, dataRef, nome) {
     if (dp.length === 3) dataISO = dp[2] + '-' + dp[1] + '-' + dp[0];
   }
   if (!dataISO) dataISO = dataHoje();
+  const dataPend = dataISO;   // dia da pendência clicada (antes do ajuste de turno noturno)
 
   // Dia inteiro em turno noturno: o dia de referência é o do TURNO, e as batidas da madrugada
   // seguinte (pendências de D+1) são resolvidas junto
@@ -2993,6 +3095,17 @@ async function pfGravar(key, codigo, dataRef, nome) {
     if (aplica) {
       dataISO = cob.turno;
       batidasExtra = cob.extras.map(it => it.codigo + '_' + it.data_ref.split('/').reverse().join('-') + '_' + (it.horario || '0000').replace(':', '-'));
+    }
+  }
+
+  // Atestado de vários dias (v95): "Afastado até" — sem alteração no campo = só o dia
+  var diasAtestado = [dataISO];
+  if (tipo === 'atestado') {
+    const ateEl = document.getElementById('pf-ate-' + key);
+    const ate = ateEl ? ateEl.value : '';
+    if (ate && ate !== dataPend) {
+      diasAtestado = atestadoPeriodo(dataISO, ate, func.nome);
+      if (!diasAtestado) return;
     }
   }
 
@@ -3025,6 +3138,13 @@ async function pfGravar(key, codigo, dataRef, nome) {
     registro.anexo_tipo = anexoFile.type;
     registro.anexo_enviado = false;
   }
+  if (diasAtestado.length > 1) {
+    registro.atestado_grupo = id;
+    registro.periodo_ini = diasAtestado[0];
+    registro.periodo_fim = diasAtestado[diasAtestado.length - 1];
+  }
+  // Demais dias do atestado: marca no cache de sessão já aqui (antes de qualquer await)
+  const chavesPeriodo = diasAtestado.length > 1 ? atestadoMarcarSessao(codigo, diasAtestado.slice(1)) : [];
 
   // Marcar no cache de sessão IMEDIATAMENTE antes de qualquer await
   // Usa o itemKey diretamente — é a chave certa, não depende de entrada/saida
@@ -3060,6 +3180,12 @@ async function pfGravar(key, codigo, dataRef, nome) {
       await anexoGravar(id, lido, registro);
     } catch (e) { showToast('Registro gravado, mas falhou ao anexar o atestado: ' + e.message, 'error'); }
   }
+  if (diasAtestado.length > 1) {
+    try {
+      await atestadoGravarDiasExtras(registro, diasAtestado, codigo, func);
+      chavesPeriodo.forEach(k => fetch(FB_URL + '/pendencias_abertas/' + k + '.json', { method: 'DELETE' }).catch(() => {}));
+    } catch (e) { showToast('Primeiro dia gravado, mas falhou ao gravar os demais dias do atestado: ' + e.message, 'error'); }
+  }
   if (tipo === 'desligamento') {
     try { const n = await registrarDesligamento(func, dataISO, registro.id); showToast('Desligamento registrado — ' + n + ' pendência(s) apagada(s).', 'success'); }
     catch (e) { showToast('Lançamento gravado, mas falhou ao marcar o desligamento: ' + e.message, 'error'); }
@@ -3087,7 +3213,7 @@ async function pfGravar(key, codigo, dataRef, nome) {
     });
   }
 
-  showToast('✅ Registrado: ' + func.nome.split(' ')[0], 'success');
+  showToast('✅ Registrado: ' + func.nome.split(' ')[0] + (diasAtestado.length > 1 ? ' — atestado de ' + diasAtestado.length + ' dias (até ' + atestadoBR(diasAtestado[diasAtestado.length - 1]) + ')' : ''), 'success');
   pendFormAberto = null;
 
   // Avançar para a próxima pendência pendente
@@ -3213,7 +3339,8 @@ async function renderMeus() {
       '<td><span class="badge badge-' + r.tipo + '">' + labelTipo(r.tipo) + '</span></td>' +
       '<td style="font-family:monospace">' + (r.entrada || (r.saida ? '' : '&mdash;')) + (r.saida ? (r.entrada ? ' &rarr; ' : '') + r.saida : '') + '</td>' +
       '<td style="font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + (r.obs||'') + '">' + (r.obs||'&mdash;') +
-        (r.anexo_nome ? '<br><span style="font-size:10px;color:' + (r.anexo_enviado ? 'var(--green)' : 'var(--text-muted)') + '" title="' + r.anexo_nome + '">📎 ' + (r.anexo_enviado ? 'enviado' : 'aguardando envio') + '</span>' : '') + '</td>' +
+        (r.anexo_nome ? '<br><span style="font-size:10px;color:' + (r.anexo_enviado ? 'var(--green)' : 'var(--text-muted)') + '" title="' + r.anexo_nome + '">📎 ' + (r.anexo_enviado ? 'enviado' : 'aguardando envio') + (r.periodo_fim && r.periodo_fim !== r.periodo_ini ? ' · até ' + atestadoBR(r.periodo_fim) : '') + '</span>' : '') +
+        (r.atestado_extra && r.periodo_ini ? '<br><span style="font-size:10px;color:var(--text-muted)">📎 no atestado de ' + atestadoBR(r.periodo_ini) + '</span>' : '') + '</td>' +
       '<td style="font-size:12px;color:var(--text-muted);white-space:nowrap">' + (r.gestor ? r.gestor.split(' ')[0] : '&mdash;') +
         (r.ts ? '<br><span style="font-size:10px;opacity:.7">' + fmtDataHora(r.ts) + '</span>' : '') + '</td>' +
       '<td><div class="row-actions">' +
@@ -3236,6 +3363,17 @@ async function deletarRegMeus(id) {
     } catch (e) { console.warn('Erro ao desfazer desligamento:', e); }
     await storageSet(STORAGE_KEY, all.filter(r => r.id !== id));
     showToast('Desligamento desfeito — novas pendências voltam a aparecer.', 'info');
+    renderMeus();
+    if (pendenciasCache) carregarPendencias();
+    return;
+  }
+
+  if (reg && reg.atestado_extra) {
+    const semPrefixo = reg.codigo.replace('GBLOG_', '');
+    pendLancadosDiaSession.delete(reg.codigo + '_' + (reg.data_ref || reg.data));
+    pendLancadosDiaSession.delete(semPrefixo + '_' + (reg.data_ref || reg.data));
+    await storageSet(STORAGE_KEY, all.filter(r => r.id !== id));
+    showToast('Dia ' + atestadoBR(reg.data) + ' retirado do atestado.', 'info');
     renderMeus();
     if (pendenciasCache) carregarPendencias();
     return;
@@ -3350,6 +3488,12 @@ async function gravar() {
     const erroAnexo = anexoValidar(anexoFile);
     if (erroAnexo) { showToast(erroAnexo, 'error'); return; }
   }
+  // Atestado de vários dias (v95)
+  let diasAtestado = [data];
+  if (currentTipo === 'atestado') {
+    diasAtestado = atestadoPeriodo(data, document.getElementById('f-ate').value, selectedFunc.nome);
+    if (!diasAtestado) return;
+  }
 
   // Pendência aberta do mesmo funcionário no dia (ou no dia seguinte, turno noturno)?
   // Lançar por aqui E pela aba Pendências mandava a mesma batida 2x para o Fortes.
@@ -3384,6 +3528,15 @@ async function gravar() {
     registro.anexo_tipo = anexoFile.type;
     registro.anexo_enviado = false;
   }
+  const codPend = selectedFunc.codigo.replace('GBLOG_', '');
+  const funcAtestado = selectedFunc;
+  let chavesPeriodo = [];
+  if (diasAtestado.length > 1) {
+    registro.atestado_grupo = id;
+    registro.periodo_ini = diasAtestado[0];
+    registro.periodo_fim = diasAtestado[diasAtestado.length - 1];
+    chavesPeriodo = atestadoMarcarSessao(codPend, diasAtestado);   // antes de qualquer await
+  }
 
   await storageAppend(registro);
   if (anexoFile) {
@@ -3392,11 +3545,17 @@ async function gravar() {
       await anexoGravar(id, lido, registro);
     } catch (e) { showToast('Registro gravado, mas falhou ao anexar o atestado: ' + e.message, 'error'); }
   }
+  if (diasAtestado.length > 1) {
+    try {
+      await atestadoGravarDiasExtras(registro, diasAtestado, codPend, funcAtestado);
+      chavesPeriodo.forEach(k => fetch(FB_URL + '/pendencias_abertas/' + k + '.json', { method: 'DELETE' }).catch(() => {}));
+    } catch (e) { showToast('Primeiro dia gravado, mas falhou ao gravar os demais dias do atestado: ' + e.message, 'error'); }
+  }
   if (currentTipo === 'desligamento') {
     try { await registrarDesligamento(selectedFunc, data, registro.id); }
     catch (e) { showToast('Lançamento gravado, mas falhou ao marcar o desligamento: ' + e.message, 'error'); }
   }
-  showToast('Registro gravado com sucesso!', 'success');
+  showToast(diasAtestado.length > 1 ? 'Atestado gravado — ' + diasAtestado.length + ' dias (até ' + atestadoBR(diasAtestado[diasAtestado.length - 1]) + ').' : 'Registro gravado com sucesso!', 'success');
 
   clearFunc();
   document.getElementById('f-entrada').value = '';
@@ -3404,6 +3563,8 @@ async function gravar() {
   document.getElementById('f-obs').value = '';
   document.getElementById('f-anexo').value = '';
   document.getElementById('f-anexo-info').textContent = '';
+  document.getElementById('f-ate').value = currentTipo === 'atestado' ? (document.getElementById('f-data').value || '') : '';
+  delete document.getElementById('f-ate').dataset.manual;
   setTimeout(() => document.getElementById('f-matricula').focus(), 80);
 }
 
