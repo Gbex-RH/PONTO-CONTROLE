@@ -575,7 +575,7 @@
         <button class="empresa-btn gblog" id="btn-gblog" onclick="setEmpresa('GBLOG')">GBLOG</button>
       </div>
       <span class="topbar-user">Olá, <strong id="topbar-nome">—</strong></span>
-      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v93</span>
+      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v94</span>
       <button class="btn-ghost" onclick="trocarMinhaSenha()" title="Trocar minha senha">🔑</button>
       <button class="btn-ghost" onclick="doLogout()">Sair</button>
     </div>
@@ -1141,12 +1141,26 @@
           <div id="cad-senha-box"><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Senha inicial</label><input id="cad-senha" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none;width:150px" placeholder="mín. 6 caracteres"></div>
         </div>
         <div id="cad-gestor-box" style="margin-top:14px">
-          <label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Filiais que pode ver</label><div id="cad-filiais" style="display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px"></div>
-          <label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px;margin-top:12px">Setores (nenhum marcado = todos os setores das filiais)</label><div id="cad-setores" style="display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px"></div>
+          <label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Filiais que pode ver</label><div id="cad-filiais" onchange="cadVisRender()" style="display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px"></div>
+          <label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px;margin-top:12px">Setores (nenhum marcado = todos os setores das filiais)</label><div id="cad-setores" onchange="cadVisRender()" style="display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px"></div>
+          <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
+            <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:8px">
+              <b style="font-size:13px">👥 Funcionários que este gestor vê: <span id="cad-vis-total">0</span></b>
+              <input id="cad-vis-filtro" placeholder="Filtrar a lista..." oninput="cadVisRender()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none;width:180px;margin-left:auto">
+            </div>
+            <div style="position:relative;margin-bottom:8px">
+              <input id="cad-vis-add" placeholder="➕ Incluir funcionário: digite nome ou código..." oninput="cadVisSugerir()" autocomplete="off" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none;width:100%">
+              <div id="cad-vis-sug" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:20;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);max-height:220px;overflow-y:auto;box-shadow:0 6px 18px rgba(0,0,0,.18)"></div>
+            </div>
+            <div id="cad-vis-lista" style="max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-sm)"></div>
+            <div id="cad-vis-removidos" style="margin-top:8px;font-size:12px"></div>
+            <div style="font-size:11px;color:var(--text-dim);margin-top:6px">As mudanças só valem depois de clicar em <b>Salvar</b>. O gestor passa a ver a lista nova no próximo login.</div>
+          </div>
           <details style="margin-top:12px"><summary style="cursor:pointer;font-size:12px;color:var(--text-muted)">Avançado: exceções por funcionário</summary>
             <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:8px">
-              <div style="flex:1;min-width:240px"><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Bloqueados (códigos, separados por vírgula)</label><input id="cad-bloqueados" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none;width:100%"></div>
-              <div style="flex:1;min-width:240px"><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Somente estes (códigos — ignora filial/setor)</label><input id="cad-permitidos" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none;width:100%"></div>
+              <div style="flex:1;min-width:240px"><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Bloqueados (códigos, separados por vírgula)</label><input id="cad-bloqueados" oninput="cadVisRender()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none;width:100%"></div>
+              <div style="flex:1;min-width:240px"><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Somente estes (códigos — ignora filial/setor)</label><input id="cad-permitidos" oninput="cadVisRender()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none;width:100%"></div>
+              <div style="flex:1;min-width:240px"><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Incluídos a mais (códigos — somam à filial/setor)</label><input id="cad-extras" oninput="cadVisRender()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none;width:100%"></div>
             </div></details>
         </div>
         <div id="cad-emp-box" style="display:none;margin-top:14px;gap:14px;flex-wrap:wrap">
@@ -1173,7 +1187,7 @@
           <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end">
             <div><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Empresa</label><select id="fc-empresa" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none"><option>GBEX</option><option>GBLOG</option></select></div>
             <div><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Código (matrícula)</label><input id="fc-codigo" maxlength="6" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none;width:110px" placeholder="001800"></div>
-            <div style="flex:1;min-width:240px"><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Nome completo</label><input id="fc-nome" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none;width:100%"></div>
+            <div style="flex:1;min-width:240px"><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Nome completo</label><input id="fcad-nome" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none;width:100%"></div>
             <div><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Filial</label><select id="fc-filial" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none"></select></div>
             <div><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Setor</label><input id="fc-setor" list="fc-setores" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none;width:150px"><datalist id="fc-setores"></datalist></div>
             <div><label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:4px">Cargo</label><input id="fc-cargo" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:var(--radius-sm);outline:none;width:180px"></div>
@@ -2016,31 +2030,28 @@ function setTipo(btn) {
 // Núcleo da regra de permissão (bloqueados/permitidos/filial/setor), reaproveitado por
 // getFuncionariosPermitidos() e pela aba Pendências — que precisa checar pendências de
 // funcionários órfãos (via FUNC_EXTRA) também, não só do cadastro estático FUNCIONARIOS.
-function usuarioPodeVerCodigo(codigo, filialConhecida, setorConhecido) {
-  if (!currentUser.filiais) return true; // admin vê tudo
-  if ((currentUser.bloqueados || []).includes(codigo)) return false;
-  if (currentUser.permitidos) return currentUser.permitidos.includes(codigo);
+// v94: regraAcessoVe(u, ...) é a regra pura (serve para qualquer cadastro — usada também em
+// Cadastros → Logins para listar quem cada gestor vê). "extras" = funcionários somados à filial/setor.
+function regraAcessoVe(u, codigo, filialConhecida, setorConhecido) {
+  if (!u.filiais) return true; // admin vê tudo
+  if ((u.bloqueados || []).includes(codigo)) return false;
+  if ((u.extras || []).includes(codigo)) return true;
+  if (u.permitidos && u.permitidos.length) return u.permitidos.includes(codigo);
   if (!filialConhecida) return false;
   const nf = s => (s||'').toUpperCase().replace('FILIAL - ','').trim();
-  if (!currentUser.filiais.some(f => nf(f) === nf(filialConhecida))) return false;
-  if (currentUser.setores && currentUser.setores.length > 0) return currentUser.setores.includes(setorConhecido);
+  if (!u.filiais.some(f => nf(f) === nf(filialConhecida))) return false;
+  if (u.setores && u.setores.length > 0) return u.setores.includes(setorConhecido);
   return true;
+}
+function usuarioPodeVerCodigo(codigo, filialConhecida, setorConhecido) {
+  return regraAcessoVe(currentUser, codigo, filialConhecida, setorConhecido);
 }
 
 function getFuncionariosPermitidos() {
   // Filtrar pela empresa selecionada
   const pool = FUNCIONARIOS.filter(f => (f.empresa || 'GBEX') === currentEmpresa);
   if (!currentUser.filiais) return pool;
-  const bloqueados = new Set(currentUser.bloqueados || []);
-  const permitidos = currentUser.permitidos ? new Set(currentUser.permitidos) : null;
-  return pool.filter(f => {
-    if (bloqueados.has(f.codigo)) return false;
-    if (permitidos) return permitidos.has(f.codigo);
-    const filialOk = currentUser.filiais.includes(f.filial);
-    if (!filialOk) return false;
-    if (currentUser.setores && currentUser.setores.length > 0) return currentUser.setores.includes(f.setor);
-    return true;
-  });
+  return pool.filter(f => usuarioPodeVerCodigo(f.codigo, f.filial, f.setor));
 }
 
 // Campo matrícula → preenche nome
@@ -2564,7 +2575,7 @@ async function renderPendencias() {
     const func = buscarFunc(item.codigo, item.empresa || currentEmpresa);
     // Filial do item: cadastro > campo filial da própria pendência > desconhecida
     const filialItem = func ? func.filial : (item.filial || '');
-    if (!usuarioPodeVerCodigo(item.codigo, filialItem, func ? func.setor : undefined)) return false;
+    if (!usuarioPodeVerCodigo(func ? func.codigo : item.codigo, filialItem, func ? func.setor : undefined)) return false;
     if (isAdmin && filtFilial) {
       // Admin com filtro de filial: itens sem filial identificável NÃO passam
       if (!filialItem || normFilial(filialItem) !== normFilial(filtFilial)) return false;
@@ -3093,7 +3104,7 @@ async function pfGravar(key, codigo, dataRef, nome) {
       if (itemEmpresa !== currentEmpresa) return false;
       const f = buscarFunc(item.codigo, item.empresa || currentEmpresa);
       const fi = f ? f.filial : (item.filial || '');
-      if (!usuarioPodeVerCodigo(item.codigo, fi, f ? f.setor : undefined)) return false;
+      if (!usuarioPodeVerCodigo(f ? f.codigo : item.codigo, fi, f ? f.setor : undefined)) return false;
       return true;
     });
     if (proxima) {
@@ -4687,7 +4698,7 @@ function renderJornadas() {
 // ─────────────────────────────────────────────
 //  CADASTROS — LOGINS (v84a, somente admin)
 //  /usuarios/{cpf}: { nome, nomeC, admin, filiais, setores, perfil, codigo, empresa,
-//                    bloqueados, permitidos, ativo, uid }   (sem senha — senha é do Firebase Auth)
+//                    bloqueados, permitidos, extras (v94), ativo, uid }   (sem senha — senha é do Firebase Auth)
 //  /admins/{uid}: true   ← usado pelas regras do banco para liberar escrita de cadastros
 // ─────────────────────────────────────────────
 let cadUsuarios = {};
@@ -4715,7 +4726,7 @@ function cadRender() {
   const acesso = u => u.admin ? 'Todas as filiais' : u.perfil === 'empregado' ? (u.codigo || '—')
     : ((u.filiais || []).map(f => f.replace('FILIAL - ', '')).join(', ') || '—') + ((u.setores || []).length ? '<br><span style="font-size:11px;color:var(--text-dim)">' + u.setores.join(', ') + '</span>' : '');
   el.innerHTML = '<table class="val-table"><thead><tr><th>Nome</th><th>CPF</th><th>Perfil</th><th>Acesso</th><th>Situação</th><th></th></tr></thead><tbody>' +
-    lista.map(([cpf, u]) => '<tr style="' + (u.ativo === false ? 'opacity:.5' : '') + '"><td>' + cadEsc(u.nome) + '</td><td style="font-family:monospace">' + cpf + '</td><td>' + perfil(u) + '</td><td style="font-size:12px">' + acesso(u) + '</td>' +
+    lista.map(([cpf, u]) => '<tr title="Clique para abrir o cadastro" onclick="cadAbrirForm(\'' + cpf + '\')" style="cursor:pointer;' + (u.ativo === false ? 'opacity:.5' : '') + '"><td>' + cadEsc(u.nome) + '</td><td style="font-family:monospace">' + cpf + '</td><td>' + perfil(u) + '</td><td style="font-size:12px">' + acesso(u) + '</td>' +
       '<td>' + (u.ativo === false ? '<span style="color:var(--red)">Desativado</span>' : '<span style="color:var(--green)">Ativo</span>') + '</td>' +
       '<td><button class="btn-ghost" style="font-size:12px" onclick="cadAbrirForm(\'' + cpf + '\')">Editar</button></td></tr>').join('') + '</tbody></table>';
 }
@@ -4740,6 +4751,9 @@ function cadAbrirForm(cpf) {
   ck('cad-filiais', filiais, u.filiais); ck('cad-setores', setores, u.setores);
   document.getElementById('cad-bloqueados').value = (u.bloqueados || []).join(', ');
   document.getElementById('cad-permitidos').value = (u.permitidos || []).join(', ');
+  document.getElementById('cad-extras').value = (u.extras || []).join(', ');
+  document.getElementById('cad-vis-filtro').value = ''; document.getElementById('cad-vis-add').value = '';
+  document.getElementById('cad-vis-sug').style.display = 'none';
   document.getElementById('cad-codigo').value = u.codigo || '';
   document.getElementById('cad-ativo').checked = u.ativo !== false;
   cadPerfilChange();
@@ -4751,6 +4765,65 @@ function cadPerfilChange() {
   const p = document.getElementById('cad-perfil').value;
   document.getElementById('cad-gestor-box').style.display = p === 'gestor' ? '' : 'none';
   document.getElementById('cad-emp-box').style.display = p === 'empregado' ? 'flex' : 'none';
+  cadVisRender();
+}
+// ── v94: quem este gestor vê (lista ao vivo a partir do que está no formulário) ──
+const cadLista = id => document.getElementById(id).value.split(/[,;\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
+const cadListaSet = (id, arr) => { document.getElementById(id).value = [...new Set(arr)].join(', '); };
+function cadVisRegra() {
+  const marcados = id => [...document.querySelectorAll('#' + id + ' input:checked')].map(i => i.value);
+  return { filiais: marcados('cad-filiais'), setores: marcados('cad-setores'),
+    bloqueados: cadLista('cad-bloqueados'), permitidos: cadLista('cad-permitidos'), extras: cadLista('cad-extras') };
+}
+const cadVisLinha = f => '<b style="font-family:monospace;font-size:12px">' + cadEsc(f.codigo) + '</b> ' + cadEsc(f.nome) +
+  ' <span style="color:var(--text-dim);font-size:11px">' + cadEsc((f.filial || '').replace('FILIAL - ', '')) + (f.setor ? ' · ' + cadEsc(f.setor) : '') + ((f.empresa || 'GBEX') === 'GBLOG' ? ' · GBLOG' : '') + '</span>';
+function cadVisRender() {
+  const el = document.getElementById('cad-vis-lista'); if (!el) return;
+  const u = cadVisRegra();
+  const filtro = (document.getElementById('cad-vis-filtro').value || '').toUpperCase().trim();
+  const extras = new Set(u.extras);
+  const vis = FUNCIONARIOS.filter(f => regraAcessoVe(u, f.codigo, f.filial, f.setor))
+    .sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+  document.getElementById('cad-vis-total').textContent = vis.length;
+  const mostra = vis.filter(f => !filtro || f.codigo.includes(filtro) || (f.nome || '').toUpperCase().includes(filtro));
+  el.innerHTML = mostra.length ? mostra.map(f => '<div style="display:flex;gap:8px;align-items:center;padding:5px 10px;border-bottom:1px solid var(--border);font-size:13px"><span style="flex:1">' + cadVisLinha(f) +
+      (extras.has(f.codigo) ? ' <span style="font-size:11px;color:var(--accent);font-weight:600">incluído a mais</span>' : '') + '</span>' +
+      '<button type="button" class="btn-ghost" style="font-size:11px;padding:3px 8px" onclick="cadVisRemover(\'' + cadEsc(f.codigo) + '\')">Remover</button></div>').join('')
+    : '<div style="padding:10px;font-size:13px;color:var(--text-dim)">' + (vis.length ? 'Nenhum funcionário com esse filtro.' : 'Este gestor não vê nenhum funcionário.') + '</div>';
+  const rem = u.bloqueados.map(c => FUNCIONARIOS.find(f => f.codigo === c) || { codigo: c, nome: '(não está no cadastro)' });
+  document.getElementById('cad-vis-removidos').innerHTML = rem.length ? '<b style="color:var(--text-muted)">Removidos deste gestor (' + rem.length + '):</b>' +
+    rem.map(f => '<div style="display:flex;gap:8px;align-items:center;padding:3px 0"><span style="flex:1">' + cadVisLinha(f) + '</span>' +
+      '<button type="button" class="btn-ghost" style="font-size:11px;padding:3px 8px" onclick="cadVisDevolver(\'' + cadEsc(f.codigo) + '\')">↩ Devolver</button></div>').join('') : '';
+}
+function cadVisRemover(cod) {
+  const u = cadVisRegra();
+  if (u.extras.includes(cod)) cadListaSet('cad-extras', u.extras.filter(c => c !== cod));
+  else if (u.permitidos.includes(cod)) cadListaSet('cad-permitidos', u.permitidos.filter(c => c !== cod));
+  else cadListaSet('cad-bloqueados', [...u.bloqueados, cod]);
+  cadVisRender();
+}
+function cadVisDevolver(cod) {
+  cadListaSet('cad-bloqueados', cadLista('cad-bloqueados').filter(c => c !== cod));
+  cadVisRender();
+}
+function cadVisIncluir(cod) {
+  cadListaSet('cad-bloqueados', cadLista('cad-bloqueados').filter(c => c !== cod));
+  const u = cadVisRegra(), f = FUNCIONARIOS.find(x => x.codigo === cod);
+  if (f && !regraAcessoVe(u, f.codigo, f.filial, f.setor)) cadListaSet('cad-extras', [...u.extras, cod]);
+  document.getElementById('cad-vis-add').value = '';
+  document.getElementById('cad-vis-sug').style.display = 'none';
+  cadVisRender();
+}
+function cadVisSugerir() {
+  const box = document.getElementById('cad-vis-sug');
+  const q = (document.getElementById('cad-vis-add').value || '').toUpperCase().trim();
+  if (q.length < 2) { box.style.display = 'none'; return; }
+  const u = cadVisRegra();
+  const achados = FUNCIONARIOS.filter(f => (f.codigo.includes(q) || (f.nome || '').toUpperCase().includes(q)) && !regraAcessoVe(u, f.codigo, f.filial, f.setor))
+    .sort((a, b) => (a.nome || '').localeCompare(b.nome || '')).slice(0, 30);
+  box.innerHTML = achados.length ? achados.map(f => '<div style="padding:6px 10px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border)" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'\'" onclick="cadVisIncluir(\'' + cadEsc(f.codigo) + '\')">' + cadVisLinha(f) + '</div>').join('')
+    : '<div style="padding:8px 10px;font-size:12px;color:var(--text-dim)">Ninguém encontrado (ou o gestor já vê essa pessoa).</div>';
+  box.style.display = 'block';
 }
 async function cadPut(caminho, valor) {
   const res = await fetch(FB_URL + '/' + caminho + '.json', { method: valor === null ? 'DELETE' : 'PUT',
@@ -4766,7 +4839,7 @@ async function cadSalvar() {
   if (!nome) { showToast('Informe o nome.', 'error'); return; }
   const perfil = document.getElementById('cad-perfil').value;
   const marcados = id => [...document.querySelectorAll('#' + id + ' input:checked')].map(i => i.value);
-  const lista = id => document.getElementById(id).value.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
+  const lista = cadLista;
   const ant = cadEditando ? cadUsuarios[cpf] : {};
   const u = {
     nome, nomeC: document.getElementById('cad-nomec').value.trim().toUpperCase() || nome.split(' ').slice(0, 2).join(' '),
@@ -4776,10 +4849,11 @@ async function cadSalvar() {
   if (ant.uid) u.uid = ant.uid;
   if (perfil === 'gestor') {
     u.filiais = marcados('cad-filiais'); u.setores = marcados('cad-setores');
-    if (!u.filiais.length && !lista('cad-permitidos').length) { showToast('Marque ao menos uma filial.', 'error'); return; }
+    if (!u.filiais.length && !lista('cad-permitidos').length && !lista('cad-extras').length) { showToast('Marque ao menos uma filial.', 'error'); return; }
     const bl = lista('cad-bloqueados'), pe = lista('cad-permitidos');
     if (bl.length) u.bloqueados = bl;
     if (pe.length) u.permitidos = pe;
+    const ex = lista('cad-extras'); if (ex.length) u.extras = ex;
   }
   if (perfil === 'empregado') {
     u.perfil = 'empregado';
@@ -4870,7 +4944,7 @@ function fcAbrirForm(cod) {
   document.getElementById('fc-empresa').value = f.empresa || (cod && cod.startsWith('GBLOG_') ? 'GBLOG' : 'GBEX');
   document.getElementById('fc-empresa').disabled = !!cod;
   const ce = document.getElementById('fc-codigo'); ce.value = cod ? cod.replace('GBLOG_', '') : ''; ce.disabled = !!cod;
-  document.getElementById('fc-nome').value = f.nome || '';
+  document.getElementById('fcad-nome').value = f.nome || '';
   document.getElementById('fc-filial').innerHTML = '<option value="">—</option>' + FC_FILIAIS().map(x => '<option value="' + cadEsc(x) + '">' + cadEsc(x.replace('FILIAL - ', '')) + '</option>').join('');
   document.getElementById('fc-filial').value = f.filial || '';
   document.getElementById('fc-setores').innerHTML = [...new Set(FUNCIONARIOS.map(x => x.setor).filter(Boolean))].sort().map(s => '<option value="' + cadEsc(s) + '">').join('');
@@ -4911,7 +4985,7 @@ async function fcGravar(cod, reg) {
 async function fcSalvar() {
   if (!cadEhAdmin()) return;
   const d = { empresa: document.getElementById('fc-empresa').value, codigo: fcEditando || document.getElementById('fc-codigo').value,
-    nome: document.getElementById('fc-nome').value, filial: document.getElementById('fc-filial').value, setor: document.getElementById('fc-setor').value,
+    nome: document.getElementById('fcad-nome').value, filial: document.getElementById('fc-filial').value, setor: document.getElementById('fc-setor').value,
     cargo: document.getElementById('fc-cargo').value, pis: document.getElementById('fc-pis').value, admissao: document.getElementById('fc-admissao').value };
   const m = fcMontar(d);
   if (m.erro) { showToast('Não foi possível salvar: ' + m.erro + '.', 'error'); return; }
