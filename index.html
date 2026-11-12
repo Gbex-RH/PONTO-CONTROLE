@@ -275,6 +275,7 @@
   .tipo-btn.t-falta.active { background: var(--red); border-color: var(--red); }
   .tipo-btn.t-outro.active { background: var(--purple); border-color: var(--purple); }
   .tipo-btn.t-deslig.active { background: var(--red); border-color: var(--red); }
+  .tipo-btn.t-curso.active { background: var(--accent); border-color: var(--accent); }
 
   .horario-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
@@ -337,6 +338,7 @@
   .badge-atestado { background: var(--yellow-dim); color: var(--yellow); }
   .badge-falta { background: var(--red-dim); color: var(--red); }
   .badge-outro { background: var(--purple-dim); color: var(--purple); }
+  .badge-curso { background: var(--accent-dim, rgba(59,130,246,.15)); color: var(--accent); }
 
   .flag-btn {
     background: transparent; border: 1.5px solid var(--border); color: var(--text-muted);
@@ -575,7 +577,7 @@
         <button class="empresa-btn gblog" id="btn-gblog" onclick="setEmpresa('GBLOG')">GBLOG</button>
       </div>
       <span class="topbar-user">Olá, <strong id="topbar-nome">—</strong></span>
-      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v95</span>
+      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v96</span>
       <button class="btn-ghost" onclick="trocarMinhaSenha()" title="Trocar minha senha">🔑</button>
       <button class="btn-ghost" onclick="doLogout()">Sair</button>
     </div>
@@ -654,6 +656,7 @@
             <button class="tipo-btn t-atestado" data-tipo="atestado" onclick="setTipo(this)">Atestado</button>
             <button class="tipo-btn t-falta" data-tipo="falta" onclick="setTipo(this)">Falta</button>
             <button class="tipo-btn t-outro" data-tipo="outro" onclick="setTipo(this)">Outro</button>
+            <button class="tipo-btn t-curso" id="tipo-btn-curso" data-tipo="curso" onclick="setTipo(this)" style="display:none" title="Só para aprendiz">Curso</button>
             <button class="tipo-btn t-deslig" data-tipo="desligamento" onclick="setTipo(this)">Desligamento</button>
           </div>
         </div>
@@ -794,6 +797,7 @@
             <option value="falta">Falta</option>
             <option value="ferias">Férias</option>
             <option value="outro">Outro</option>
+            <option value="curso">Curso</option>
             <option value="desligamento">Desligamento</option>
           </select>
         </div>
@@ -865,6 +869,7 @@
             <option value="atestado">Atestado</option>
             <option value="falta">Falta</option>
             <option value="outro">Outro</option>
+            <option value="curso">Curso</option>
             <option value="desligamento">Desligamento</option>
           </select>
           <select id="val-status" onchange="renderValidacao()">
@@ -1347,6 +1352,7 @@
           <option value="atestado">Atestado</option>
           <option value="falta">Falta</option>
           <option value="outro">Outro</option>
+          <option value="curso">Curso</option>
           <option value="desligamento">Desligamento</option>
         </select>
       </div>
@@ -2203,12 +2209,22 @@ function selectFuncDirect(f) {
   card.classList.add('show');
   document.getElementById('fc-nome').textContent = `${f.nome} — Cód. ${f.codigo}`;
   document.getElementById('fc-det').textContent = `${f.filial.replace('FILIAL - ','')} · ${f.setor} · ${f.cargo}`;
+  cursoBotao(f);
   // Foca no campo de data
   document.getElementById('f-data').focus();
 }
 
+// Botão "Curso" da aba Lançamento: só aparece quando o funcionário escolhido é aprendiz
+function cursoBotao(f) {
+  const b = document.getElementById('tipo-btn-curso'); if (!b) return;
+  const pode = ehAprendiz(f);
+  b.style.display = pode ? '' : 'none';
+  if (!pode && currentTipo === 'curso') setTipo(document.querySelector('.tipo-btn[data-tipo="lancamento"]'));
+}
+
 function clearFunc() {
   selectedFunc = null;
+  cursoBotao(null);
   document.getElementById('f-matricula').value = '';
   document.getElementById('f-busca').value = '';
   document.getElementById('func-card').classList.remove('show');
@@ -2486,7 +2502,9 @@ async function carregarPendencias() {
 let pendFormAberto = null; // codigo_data do item com form aberto
 const pendLancadosSession = new Set(); // lançados nesta sessão (cache local)
 // Tipos que resolvem o DIA INTEIRO (mesma regra usada pelo robô Python em TIPOS_DIA_INTEIRO/por_dia)
-const TIPOS_DIA_INTEIRO = ['folga','falta','atestado','ferias','outro','desligamento'];
+const TIPOS_DIA_INTEIRO = ['folga','falta','atestado','ferias','outro','curso','desligamento'];
+// "Curso" (v96): justificativa de dia inteiro, só para aprendiz (dia de aula). Sem anexo. Não vai para o AFDT.
+function ehAprendiz(func) { return !!func && /APRENDIZ/i.test(String(func.cargo || '')); }
 // Dia inteiro já resolvido nesta sessão (chave codigo_data, sem horário) — Folga/Falta/Atestado/Outro
 // cobrem o dia todo, mas a pendência original tem um horário real que nunca bateria com um fallback fixo
 const pendLancadosDiaSession = new Set();
@@ -2758,6 +2776,7 @@ async function renderPendencias() {
                 '<option value="atestado">Atestado</option>' +
                 '<option value="falta">Falta</option>' +
                 '<option value="outro">Outro</option>' +
+                (ehAprendiz(func) ? '<option value="curso">Curso</option>' : '') +
                 '<option value="desligamento">Desligamento</option>' +
               '</select>' +
             '</div>' +
@@ -3070,6 +3089,7 @@ async function pfGravar(key, codigo, dataRef, nome) {
   // Buscar dados do funcionário
   const func = buscarFunc(codigo, currentEmpresa);
   if (!func) { showToast('Funcionário não encontrado.', 'error'); return; }
+  if (tipo === 'curso' && !ehAprendiz(func)) { showToast('"Curso" é só para aprendiz.', 'error'); return; }
   if (tipo === 'desligamento' && !confirm('Registrar o DESLIGAMENTO de ' + func.nome + '?\n\nAs pendências dessa pessoa a partir desta data serão apagadas e nenhuma nova (dessa data em diante) vai aparecer.\n(Para desfazer: excluir este lançamento em Meus Lançamentos.)')) return;
 
   // Converter data DD/MM/YYYY → YYYY-MM-DD
@@ -3477,6 +3497,7 @@ async function gravar() {
   const saida = currentTipo === 'lancamento' ? document.getElementById('f-saida').value : '';
   const obs = document.getElementById('f-obs').value.trim();
 
+  if (currentTipo === 'curso' && !ehAprendiz(selectedFunc)) { showToast('"Curso" é só para aprendiz.', 'error'); return; }
   if (currentTipo === 'desligamento' && !confirm('Registrar o DESLIGAMENTO de ' + selectedFunc.nome + '?\n\nAs pendências dessa pessoa a partir desta data serão apagadas e nenhuma nova (dessa data em diante) vai aparecer.')) return;
   if (currentTipo === 'lancamento' && !entrada && !saida) {
     showToast('Informe ao menos entrada ou saída.', 'error'); return;
@@ -3636,7 +3657,7 @@ function toolToggle(headerBtn) {
 // (mês, filial, tipo, status, exportado, busca, período). Usada tanto pela
 // tabela (renderValidacao) quanto pela exportação em Excel, para garantir que
 // o arquivo exportado seja sempre exatamente o que está sendo mostrado na tela.
-async function getValidacaoFiltrada() {
+async function getValidacaoFiltrada(opts) {
   const all = await storageGet(STORAGE_KEY, { cache: true }) || [];
   const mes = document.getElementById('val-mes').value;
   const filtFilial = document.getElementById('val-filial').value;
@@ -3649,8 +3670,12 @@ async function getValidacaoFiltrada() {
   if (filtFilial) dados = dados.filter(r => filialReg(r) === filtFilial);
   if (filtTipo) dados = dados.filter(r => r.tipo === filtTipo);
   if (filtStatus) dados = dados.filter(r => r.status === filtStatus);
-  if (filtExportado === 'sim') dados = dados.filter(r => r.exportado_afdt);
-  if (filtExportado === 'nao') dados = dados.filter(r => !r.exportado_afdt);
+  // O Excel (opts.ignorarExportado) traz sempre exportados e não exportados: com o filtro padrão "Não exportados",
+  // gerar o AFDT antes esvaziava a aba LANÇAMENTO do Excel (v96 — conferência de out/2026).
+  if (!(opts && opts.ignorarExportado)) {
+    if (filtExportado === 'sim') dados = dados.filter(r => r.exportado_afdt);
+    if (filtExportado === 'nao') dados = dados.filter(r => !r.exportado_afdt);
+  }
   if (filtBusca) dados = dados.filter(r => r.nome.toLowerCase().includes(filtBusca) || r.codigo.includes(filtBusca));
 
   // Filtro de data
@@ -3724,6 +3749,7 @@ const VAL_TIPOS_EXPORT = [
   { tipo: 'folga',      aba: 'FOLGA' },
   { tipo: 'ferias',     aba: 'FÉRIAS' },
   { tipo: 'outro',      aba: 'OUTRO' },
+  { tipo: 'curso',      aba: 'CURSO' },
   { tipo: 'desligamento', aba: 'DESLIGAMENTO' }
 ];
 
@@ -3751,7 +3777,7 @@ function valRegistroParaLinha(r) {
 // separado em uma aba por tipo de justificativa.
 async function exportarValidacaoExcel() {
   if (typeof XLSX === 'undefined') { showToast('Biblioteca de Excel não carregou. Verifique sua internet e recarregue a página.', 'error'); return; }
-  const { dados, mes, filtFilial } = await getValidacaoFiltrada();
+  const { dados, mes, filtFilial } = await getValidacaoFiltrada({ ignorarExportado: true });
   if (!dados.length) { showToast('Nada para exportar com os filtros atuais.', 'error'); return; }
 
   const wb = XLSX.utils.book_new();
@@ -3770,7 +3796,7 @@ async function exportarValidacaoExcel() {
   const sufixoFilial = filtFilial ? '_' + filtFilial.replace('FILIAL - ', '').replace(/\s/g, '_') : '';
   const nomeArquivo = `Validacao_${currentEmpresa}_${mesM}_${anoM}${sufixoFilial}.xlsx`;
   XLSX.writeFile(wb, nomeArquivo);
-  showToast('✅ Excel exportado: ' + dados.length + ' lançamento(s) — ' + resumo.join(', '), 'success');
+  showToast('✅ Excel exportado: ' + dados.length + ' lançamento(s), já exportados no AFDT ou não — ' + resumo.join(', '), 'success');
 }
 
 async function toggleStatus(id) {
@@ -5533,7 +5559,7 @@ function fmtDataHora(iso) {
 }
 
 function labelTipo(t) {
-  const m = {lancamento:'Lançamento',folga:'Folga',atestado:'Atestado',falta:'Falta',ferias:'Férias',outro:'Outro',desligamento:'Desligamento'};
+  const m = {lancamento:'Lançamento',folga:'Folga',atestado:'Atestado',falta:'Falta',ferias:'Férias',outro:'Outro',curso:'Curso',desligamento:'Desligamento'};
   return m[t]||t;
 }
 
