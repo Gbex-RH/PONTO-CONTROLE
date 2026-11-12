@@ -21,7 +21,7 @@
   CAT.CALCULO = '5. Cálculo do Fortes';
 
   // Ad.Not sem hora reduzida: 22:00–05:00 de relógio + prorrogação após 05:00.
-  // O Fortes só prorroga se a entrada foi até 22:00 (casos de 04/09 e 25/09/2026).
+  // O Fortes só prorroga se a entrada foi até 22:00 (caso 04/09 e caso 25/09/2026).
   function adNotEsperado(b, comoFortes = true) {
     if (b.length < 2 || b.length % 2) return null;
     const lin = []; let base = b[0];
@@ -47,7 +47,7 @@
     for (const e of Object.values(espelho)) {
       if (ign.has(e.codigo)) continue;
       const mot = /MOT/i.test(e.cargo || '');
-      const soma = { trab: 0, he: 0, at: 0, adn: 0 };
+      const soma = { trab: 0, he: 0, at: 0, adn: 0 }, iniEmp = itens.length;
       let exp50 = 0, expExc = 0, expUnica = 0;
       for (const d of Object.values(e.dias)) {
         const v = k => hm(d[k]) || 0;
@@ -88,19 +88,30 @@
           }
           if (x < -10 && at && Math.abs(at - (-x)) > 1 && !(ab && Math.abs(at - ab) <= 1)) add(CAT.CALCULO, e, d, 'AT/SA diferente do saldo', `Saldo ${dur(x)}, AT ${dur(at)}.`, { nums });
           if (he && at) add(CAT.CALCULO, e, d, 'HE e AT no mesmo dia', 'Indício de batida duplicada ou fora de ordem.', { nums });
-          if (at >= 120 && b.some((t, i) => i && (t - b[i - 1] + 1440) % 1440 <= 15)) add(CAT.CALCULO, e, d, 'Atraso grande com batida duplicada', 'Provável batida duplicada — não é atraso real.', { nums });
+          const preA = new Set((e.prevSem[d.sem] || []).map(hm).slice(1, -1));   // pré-assinalada colada numa batida real não é duplicada
+          if (at >= 120 && b.some((t, i) => i && (t - b[i - 1] + 1440) % 1440 <= 15 && !preA.has(t) && !preA.has(b[i - 1]))) add(CAT.CALCULO, e, d, 'Atraso grande com batida duplicada', 'Provável batida duplicada — não é atraso real.', { nums });
         }
         if (he && (!pct || pct[1] !== '100')) {
           if (faixa.unica) expUnica += he;
           else { exp50 += Math.min(he, 120); expExc += Math.max(0, he - 120); }
         }
       }
-      // calibração: soma dos dias × rodapé
       const T = e.tot || {};
+      // Fortes sem NENHUMA hora extra apurada no mês e vários dias com saldo positivo: é um problema só (cadastro/apuração),
+      // não um erro por dia (caso e caso REC out/2026: 39 avisos iguais).
+      const menos = itens.slice(iniEmp).filter(i => i.tipo === 'HE paga a menos');
+      const naoApurou = menos.length >= 5 && !(T['Horas Extras(Total)'] > 0);
+      if (naoApurou) {
+        const tot = menos.reduce((s, i) => s + (hm(((i.acao.match(/Saldo (d+hd+)/) || [])[1] || '0h00').replace('h', ':')) || 0), 0);
+        for (let k = itens.length - 1; k >= iniEmp; k--) if (itens[k].tipo === 'HE paga a menos') itens.splice(k, 1);
+        add(CAT.CALCULO, e, null, 'Fortes não apurou HE no mês inteiro', `Nenhuma hora extra apurada em ${menos.length} dias com saldo positivo (≈ ${dur(tot)}). Conferir o cadastro (empregado novo? apuração desligada?) e reprocessar.`);
+      }
+      // calibração: soma dos dias × rodapé
       for (const [k, s] of [['Trabalhadas', 'trab'], ['Horas Extras(Total)', 'he'], ['Atrasos e SA', 'at'], ['Adicionais Noturnos', 'adn']])
         if (k in T && Math.abs(T[k] - soma[s]) > 2) add(CAT.CALCULO, e, null, 'Leitura do PDF não fecha', `${k}: soma dos dias ${dur(soma[s])} × rodapé ${dur(T[k])}. Não confiar nos apontamentos deste empregado.`);
       // faixas de HE da filial
       const h = p => T['Horas Extras(' + p + '%)'] || 0;
+      if (naoApurou) continue;
       if (faixa.unica) {
         if (Math.abs(h(faixa.unica) - expUnica) > 2) add(CAT.CALCULO, e, null, 'Faixa de HE errada', `Esperado ${faixa.unica}% = ${dur(expUnica)}; rodapé ${dur(h(faixa.unica))}.`);
       } else {

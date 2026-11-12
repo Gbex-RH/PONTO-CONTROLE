@@ -22,7 +22,7 @@
   //  - batida nova no próprio dia: regra antiga (antes do início do turno − 6h = madrugada seguinte).
   // Antes tudo usava só a jornada cadastrada como referência: num turno da noite com jornada diurna, a batida das 02:00–07:00
   // ia para o COMEÇO do dia (pares trocados) e saía no AFDT com a data do dia anterior.
-  const comOffsets = bat => { let off = 0, ant = -1; return bat.map(t => { if (t < ant) off++; ant = t; return { t, origem: 'espelho', off }; }); };
+  const comOffsets = bat => { let off = 0, ant = -1; return bat.map(t => { if (t < ant) off++; ant = t; return { t, origem: 'espelho', off, esp: true }; }); };
 
   function simular({ espelho, itens = [], afdt = [], ignorar = [] }) {
     afdt = M.filtrarMes ? M.filtrarMes(afdt, espelho) : afdt;
@@ -86,7 +86,9 @@
         if (igual) { if (igual.origem === 'espelho') igual.origem = n.origem; continue; }       // confirma batida que o espelho já tinha (ex.: pré-assinalada usada como real)
         // batida do gestor até 15 min de uma batida original: vale a original
         if (n.origem === 'gestor' && lst.some(b => b.origem !== 'gestor' && Math.abs(b.t - n.t) <= 15)) continue;
-        lst.push({ t: n.t, origem: n.origem, off, novo: true });
+        // cal = dia de calendário da batida em relação ao dia do turno (0 = mesmo dia, 1 = dia seguinte). O AFDT sai com a data
+        // REAL da batida do app; antes a data era deduzida da ordem no turno e uma batida do gestor às 00:00 mudava de dia.
+        lst.push({ t: n.t, origem: n.origem, off, novo: true, cal: n.fixo ? undefined : n.dia - dia });
       }
       // 2) escala com Limite puxa as batidas da manhã seguinte para o turno (saída real depois do previsto)
       for (const it of aprov.filter(i => i.cod === cod && i.escala && i.escala.limite)) {
@@ -94,7 +96,7 @@
         const puxar = prox.filter(b => !b.off && b.t <= it.escala.limite);
         if (!puxar.length) continue;
         porData[dia + 1] = prox.filter(b => !puxar.includes(b));
-        porData[dia] = (porData[dia] || []).concat(puxar.map(b => ({ ...b, off: 1, mov: true })));
+        porData[dia] = (porData[dia] || []).concat(puxar.map(b => ({ ...b, off: 1, mov: true, cal: b.novo && b.cal !== undefined ? b.cal + 1 : b.cal })));
         porData[dia + 1].mexido = true;
       }
       for (const [k, d] of Object.entries(e.dias)) {
@@ -119,6 +121,7 @@
         else {
           const reais = lista.filter(b => !(b.origem === 'espelho' && !b.mov && preVals.includes(b.t)) && !desc.has(b.t)).map(b => ({ ...b, r: rDe(b) }));
           bats = reais.slice();
+          // (vale também para home office só com batidas do app: em set/2026 o Fortes pré-assinalou o intervalo do caso em 01 e 25/09)
           if (preDoDia.length && reais.length && reais.length < 4 && !/FERIADO|F[ÉE]RIAS|LICEN|AFAST/.test(d.det)) {
             const R = reais.map(b => b.r).sort((a, b) => a - b), ini = R[0], fim = R[R.length - 1];
             const rp = p => (p < ini ? p + 1440 : p);
@@ -166,7 +169,7 @@
   }
 
   // Intervalos de sábado/domingo e janta — mesmas regras do site da TI, aplicadas ao dia já simulado
-  function intervalosTI(sim, { comTrafego = new Set() } = {}) {
+  function intervalosTI(sim, { comTrafego = new Set(), semJanta = new Set() } = {}) {
     const itens = [];
     for (const e of Object.values(sim)) for (const d of Object.values(e.dias)) {
       // feriado tem regra própria (motor: intervalo de feriado sem escala); dias sem cálculo ficam de fora
@@ -177,7 +180,7 @@
         const itv = d.trab > 480 ? 60 : d.trab > 360 ? 30 : 0; if (!itv) continue;
         let s = 720; if (s <= ini || s + itv >= fim) s = Math.floor((ini + fim - itv) / 2);
         itens.push({ ...base, tipo: 'Intervalo de sábado/domingo', acao: `Trabalhou ${dur(d.trab)} sem intervalo: AFDT ${fmt(s)} e ${fmt(s + itv)} (regra da TI: >6h 30 min, >8h 1h).`, afdt: [fmt(s), fmt(s + itv)] });
-      } else if (d.sem !== 'SAB' && d.sem !== 'DOM' && iniRelogio >= 240 && iniRelogio <= 720 && fim - ini + iniRelogio > 1320
+      } else if (d.sem !== 'SAB' && d.sem !== 'DOM' && !semJanta.has(e.codigo + '|' + d.num) && iniRelogio >= 240 && iniRelogio <= 720 && fim - ini + iniRelogio > 1320
         // se a pessoa já parou por volta das 19h (19:00 ou 19:30 fora de um período trabalhado), a janta já existe:
         // inserir 19:00/19:30 ali quebrava os pares do dia
         && d.bats.some((b, i) => i % 2 === 0 && d.bats[i + 1] && b.r <= 1140 && d.bats[i + 1].r >= 1170)) {
@@ -211,11 +214,18 @@
   // Pendências do espelho cru que a própria simulação resolve (batidas do AFDT do app, escalas, folgas) saem da lista;
   // apontamentos de cálculo do Fortes em dias que vão mudar também saem (o Fortes vai recalcular).
   function filtrarResolvidos(itens, sim) {
-    const PEND = /Batida faltando|Dia inteiro sem batida|Batida inexistente|Feriado sem saída/;
+    const PEND = /Batida faltando|Dia inteiro sem batida|Batida inexistente|Feriado sem saída|Motorista com batida faltando|^Entrada faltando/;
     return itens.filter(it => {
       const d = sim[it.cod] && sim[it.cod].dias[it.dia]; if (!d) return true;
       if (PEND.test(it.tipo) && !it.escala && !it.afdt) {
-        if (d.situacao === 'batida faltando') return true;
+        if (d.situacao === 'batida faltando') {
+          // dia que era "sem batida" e passou a ter batidas do app em número ímpar (home office): dizer o que falta
+          if (/Dia inteiro/.test(it.tipo) && d.bats.length) {
+            it.tipo = 'Batida faltando (batidas do app)';
+            it.acao = `Com as batidas do app o dia fica com ${d.bats.length}: ${d.depois}. Falta uma batida — qual? (Se o gestor lançou uma entrada que já existia, ela foi descartada.)`;
+          }
+          return true;
+        }
         if (/Dia inteiro/.test(it.tipo)) return !(d.bats.length || d.situacao === 'folga' || d.situacao === 'afastamento');
         return false;
       }

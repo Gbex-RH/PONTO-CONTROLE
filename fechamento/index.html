@@ -8,13 +8,14 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-<script src="motor.js?v=20261111a"></script>
-<script src="auditoria.js?v=20261111a"></script>
-<script src="motoristas.js?v=20261111a"></script>
-<script src="planilhas.js?v=20261111a"></script>
-<script src="backup.js?v=20261111a"></script>
-<script src="ti.js?v=20261111a"></script>
-<script src="simulacao.js?v=20261111a"></script>
+<script src="motor.js?v=20261112a"></script>
+<script src="auditoria.js?v=20261112a"></script>
+<script src="motoristas.js?v=20261112a"></script>
+<script src="planilhas.js?v=20261112a"></script>
+<script src="backup.js?v=20261112a"></script>
+<script src="ti.js?v=20261112a"></script>
+<script src="simulacao.js?v=20261112a"></script>
+<script src="fluxo.js?v=20261112a"></script>
 <style>
   :root { --azul:#1f4e78; --borda:#d6dde6; --fundo:#f5f6f8; }
   body { font-family: Segoe UI, Arial, sans-serif; background: var(--fundo); margin: 0; color: #1b2b3a; }
@@ -203,9 +204,14 @@ $('f-val').onchange = async e => { const f = e.target.files[0]; if (!f) return;
 $('f-inex').onchange = async e => { const f = e.target.files[0]; if (!f) return;
   dados.inexistente = Motor.lerBatidaInexistente(paginasParaTexto(await lerPdf(f)));
   $('ok-inex').textContent = `✓ ${dados.inexistente.length} batidas previstas sem marcação`; };
-$('f-afdt').onchange = async e => { dados.afdt = [];
-  for (const f of e.target.files) dados.afdt.push(...Motor.lerAFDT(await f.text(), /home/i.test(f.name) ? 'HO' : 'gestor'));
-  $('ok-afdt').textContent = `✓ ${dados.afdt.length} batidas`; };
+const afdtArqs = {};
+$('f-afdt').onchange = async e => {
+  for (const f of e.target.files) afdtArqs[f.name] = Motor.lerAFDT(await f.text(), /home/i.test(f.name) ? 'HO' : 'gestor');
+  dados.afdt = Object.values(afdtArqs).flat();
+  const nomes = Object.entries(afdtArqs).map(([n, l]) => `${n} (${l.length}${l[0] && l[0].origem === 'HO' ? ', home office' : ''})`);
+  $('ok-afdt').innerHTML = `✓ ${dados.afdt.length} batidas em ${nomes.length} arquivo(s): ${esc(nomes.join(' + '))}` + (Object.values(afdtArqs).some(l => l[0] && l[0].origem === 'HO') ? '' : ' — <b>falta o AFDT Home Office?</b>') + ' <a href="#" id="afdt-limpar">limpar</a>';
+  $('afdt-limpar').onclick = ev => { ev.preventDefault(); for (const k of Object.keys(afdtArqs)) delete afdtArqs[k]; dados.afdt = []; $('f-afdt').value = ''; $('ok-afdt').textContent = ''; };
+};
 $('f-traf').onchange = async e => { const f = e.target.files[0]; if (!f) return;
   const wb = XLSX.read(await f.arrayBuffer()); const ws = wb.Sheets[wb.SheetNames[0]];
   dados.viagens = Motoristas.lerViagens(XLSX.utils.sheet_to_json(ws, { header: 1, raw: true }));
@@ -220,34 +226,14 @@ $('f-apoio').onchange = async e => { const f = e.target.files[0]; if (!f) return
   $('ok-apoio').textContent = `✓ ${dados.apoio.emails.length} e-mails de atestado (gerado ${dados.apoio.gerado})`; };
 
 $('btn-processar').onclick = () => {
-  const ign = ignorar(), filial = $('f-filial').value;
-  let lista = Motor.analisar({ espelho: dados.espelho, inexistente: dados.inexistente || [], validacao: dados.validacao, afdt: dados.afdt || [], ignorar: ign });
-  lista = lista.concat(Auditoria.auditar(dados.espelho, { filial, ignorar: ign }));
-  motor3 = null;
-  if (dados.viagens) {
-    motor3 = Motoristas.analisarMotoristas(dados.viagens, dados.espelho, { ...mesRef, ignorar: ign });
-    const ja = new Set(lista.map(i => i.cod + '|' + i.dia + '|' + i.tipo));
-    lista = lista.concat(motor3.itens.filter(i => !ja.has(i.cod + '|' + i.dia + '|' + i.tipo)));
-  }
-  lista = Backup.enriquecer(lista, dados.backup);
-  // espelho simulado (1ª passada) → intervalos de sábado/domingo e janta pelas regras da TI → simulação final
-  lista.forEach(i => i.ok = !/^4/.test(i.cat));
-  const comTrafego = new Set(lista.filter(i => i.trafego).map(i => i.cod + '|' + i.dia));
-  const sim1 = Simulacao.simular({ espelho: dados.espelho, itens: lista, afdt: dados.afdt || [], ignorar: ign });
-  lista = lista.concat(Simulacao.intervalosTI(sim1, { comTrafego }));
-  lista = Simulacao.filtrarResolvidos(lista, Simulacao.simular({ espelho: dados.espelho, itens: lista, afdt: dados.afdt || [], ignorar: ign }));
-  lista = Backup.aplicarApoio(lista, dados.apoio, mesRef);
-  const ordem = Object.values(Motor.CAT);
-  itens = lista.sort((a, b) => ordem.indexOf(a.cat) - ordem.indexOf(b.cat) || a.cod.localeCompare(b.cod) || a.dia - b.dia);
-  itens.forEach((it, i) => { it.id = i; it.ok = !/^4/.test(it.cat); });
+  // a sequência inteira fica em fluxo.js (a mesma usada nos testes)
+  const r = Fluxo.processar(dados, { filial: $('f-filial').value, ignorar: ignorar(), mesRef });
+  itens = r.itens; motor3 = r.motor3;
   atualizarSimulacao();
   $('box-mot').style.display = motor3 ? 'block' : 'none';
   if (motor3) $('mot-resumo').textContent = motor3.espera.map(m => `${m.nome}: ${Motor.dur(m.carga + m.posto)}`).join(' · ');
   filtroCat = null; $('resultado').style.display = 'block'; render();
-  // respostas/batidas de outro mês não entram (antes eram aplicadas no mesmo dia do mês errado)
-  const foraVal = dados.validacao.length - Motor.filtrarMes(dados.validacao, dados.espelho).length;
-  const foraAfdt = (dados.afdt || []).length - Motor.filtrarMes(dados.afdt || [], dados.espelho).length;
-  $('status').textContent = `✓ ${itens.length} itens.` + (foraVal || foraAfdt ? ` ⚠ Ignorados por serem de outro mês: ${foraVal} resposta(s) e ${foraAfdt} batida(s) do AFDT.` : '');
+  $('status').innerHTML = `✓ ${itens.length} itens.` + r.avisos.map(x => `<br>⚠ ${esc(x)}`).join('');
 };
 
 function render() {
@@ -282,17 +268,8 @@ function gerarEscala() { const sel = itens.filter(i => i.ok && i.escala); return
 // (batidas do gestor e do home office + as que a ferramenta gerou), já sem as que não devem entrar.
 function gerarAFDT() {
   if (!sim) return null;
-  const linhas = new Set(), ult = new Date(mesRef.ano, mesRef.mes, 0).getDate();
-  for (const e of Object.values(sim)) {
-    const pis = (dados.espelho[e.codigo] || {}).pis; if (!pis) continue;
-    for (const d of Object.values(e.dias)) for (const b of d.bats) {
-      if (b.origem === 'espelho' || b.origem === 'automática') continue;
-      let dia = d.num, mes = mesRef.mes, ano = mesRef.ano;
-      if (b.r >= 1440) { dia++; if (dia > ult) { dia = 1; mes++; if (mes > 12) { mes = 1; ano++; } } }   // madrugada do turno da noite
-      linhas.add(pis.slice(-11) + dd(dia) + dd(mes) + ano + Motor.fmt(b.t).replace(':', ''));
-    }
-  }
-  return linhas.size ? { nome: `AFDT_${sufixo()}.txt`, dados: [...linhas].join('\r\n') + '\r\n' } : null;
+  const linhas = Fluxo.linhasAFDT(sim, dados.espelho, mesRef);
+  return linhas.length ? { nome: `AFDT_${sufixo()}.txt`, dados: linhas.join('\r\n') + '\r\n' } : null;
 }
 function gerarPendencias() {
   const wb = XLSX.utils.book_new();

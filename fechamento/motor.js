@@ -157,6 +157,18 @@
         prev: d.prev || '', trab: d.trab || '', tipo, acao, gestor: extra.gestor || '', ...extra });
     };
     const ign = new Set(ignorar);
+    // Lançamento do gestor que não veio no Excel (ex.: Excel exportado só com "não exportados") é reconstruído do AFDT do app:
+    // é a mesma informação. Sem isso as regras de saída antecipada, dia deslocado e batida em afastamento ficavam caladas.
+    const p2c = {}; for (const [c, e] of Object.entries(espelho)) if (e.pis) p2c[pis11(e.pis)] = c;
+    const jaTem = new Set(validacao.filter(r => /^LANC/.test(r.tipo) && r.hora).map(r => r.cod + '|' + r.dia + '|' + r.hora));
+    let reconstruidos = 0;
+    for (const a of afdt) {
+      if (a.origem === 'HO') continue;
+      const c = p2c[pis11(a.pis)], k = c + '|' + a.dia + '|' + a.hora;
+      if (!c || jaTem.has(k)) continue;
+      jaTem.add(k); reconstruidos++;
+      validacao = validacao.concat([{ tipo: 'LANCAMENTO', dia: a.dia, mes: a.mes, ano: a.ano, cod: c, nome: espelho[c].nome, hora: a.hora, obs: '', gestor: '', status: 'Confirmado', doAfdt: true }]);
+    }
     const resp = {};
     for (const r of validacao) (resp[r.cod + '|' + r.dia] = resp[r.cod + '|' + r.dia] || []).push(r);
     const txtResp = (cod, dia) => (resp[cod + '|' + dia] || []).map(r => `${r.tipo.toLowerCase()}${r.hora ? ' ' + r.hora : ''}${r.obs ? ': ' + r.obs : ''}`).join(' | ');
@@ -171,8 +183,9 @@
       const hoje = (e.dias[dia] || {}).bat || [];
       const dAnt = e.dias[dia - 1], psAnt = dAnt ? (e.prevSem[dAnt.sem] || []).map(hm) : [];
       const comecouNoite = (ant[0] !== undefined && ant[0] >= 1080) || (psAnt[0] !== undefined && psAnt[0] >= 1080) || (!ant.length && extra.some(b => b >= 1080));
-      return h < 720 && comecouNoite && !hoje.some(b => b >= 720);
+      return h < 720 && comecouNoite && !hoje.some(b => b >= 720 && b < 1080);
     };
+    const AFAST = /F[ÉE]RIAS|LICEN|AFAST/;
     const cargaDoDia = (e, sem) => {
       const ps = (e.prevSem[sem] || []).map(hm);
       let c = 0; for (let i = 0; i + 1 < ps.length; i += 2) c += (ps[i + 1] - ps[i] + 1440) % 1440;
@@ -217,7 +230,7 @@
           // num dia isolado isso é entrada esquecida, mas quase todo dia é jornada cadastrada errada (caso REC set/2026:
           // jornada 07:00–16:20, entrando ~13:00 o mês inteiro — antes viravam 12 "batida faltando" para o gestor)
           && (tardeTodos.push(d), d._iniTarde = primeira, true)
-          // 1ª batida no horário da saída ou da volta do almoço (±45 min) = entrada esquecida, não dia deslocado (caso FOR 01/09)
+          // 1ª batida no horário da saída ou da volta do almoço (±45 min) = entrada esquecida, não dia deslocado (José caso FOR 01/09)
           // (vale só sem confirmação do gestor: se ele informou um horário da tarde perto da 1ª batida, o dia foi mesmo deslocado — caso FOR 04/09)
           && !(ps.length >= 4 && (Math.abs(primeira - ps[1]) <= 45 || Math.abs(primeira - ps[2]) <= 45)
                && !(resp[cod + '|' + d.num] || []).some(x => x.hora && hm(x.hora) >= ps[1] && Math.abs(hm(x.hora) - primeira) <= 60))) { d._ini = primeira; tarde.push(d); }   // entrou depois da 1a saída prevista
@@ -227,7 +240,7 @@
         for (const n of Object.keys(e.dias)) marca(cod, +n);
         ign.add(cod); continue;
       }
-      // à tarde praticamente o mês todo = horário cadastrado errado → trocar a jornada, não criar escala dia a dia (caso FOR set/2026)
+      // à tarde praticamente o mês todo = horário cadastrado errado → trocar a jornada, não criar escala dia a dia (Ana caso FOR set/2026)
       if (tardeTodos.length && tardeTodos.length >= Math.max(5, 0.7 * trabalhados.length)) {
         add(CAT.VOCE, cod, tardeTodos[0].num, 'Horário da tarde o mês todo', `Entrou à tarde em ${tardeTodos.length} de ${trabalhados.length} dias trabalhados (ex.: ${fmt(tardeTodos[0]._iniTarde)}), mas a jornada cadastrada começa ${fmt(hm((e.prevSem[tardeTodos[0].sem] || [])[0]))}. Trocar a jornada no Fortes Pessoal e reprocessar; depois processar de novo na ferramenta.`, { trocaJornada: 'tarde' });
         for (const d of tardeTodos) marca(cod, d.num);
@@ -268,6 +281,28 @@
       }
     }
 
+    // 0b) batida do app (gestor ou home office) em dia de férias/licença/afastamento: é excluída do ponto
+    const afdtDia = {};
+    for (const a of afdt) { const c = p2c[pis11(a.pis)]; if (c && !ign.has(c)) (afdtDia[c + '|' + a.dia] = afdtDia[c + '|' + a.dia] || []).push(a); }
+    for (const [k, as] of Object.entries(afdtDia)) {
+      const [cod, ds] = k.split('|'), dia = +ds, d = (espelho[cod].dias || {})[dia];
+      if (!d || !AFAST.test(d.det)) continue;
+      const hs = [...new Set(as.map(a => a.hora))].sort();
+      add(CAT.VOCE, cod, dia, 'Batida em dia de afastamento', `Fora do AFDT: ${hs.join(', ')} (${as.some(a => a.origem === 'HO') ? 'batida no app' : 'informada pelo gestor'}). O dia é ${d.det.toLowerCase()} — batida em férias/licença é excluída do ponto.`, { gestor: txtResp(cod, dia), naoInserir: hs.map(hm) });
+      marca(cod, dia);
+    }
+
+    // 0c) home office: duas batidas no app a até 15 min uma da outra = duplicada (caso REC 15/10/2026: 12:00 e 12:10)
+    for (const [k, as] of Object.entries(afdtDia)) {
+      const [cod, ds] = k.split('|'), dia = +ds; if (tratado.has(k)) continue;
+      const ho = [...new Set(as.filter(a => a.origem === 'HO').map(a => hm(a.hora)))].sort((x, y) => x - y);
+      for (let i = 1; i < ho.length; i++) if (ho[i] - ho[i - 1] <= 15) {
+        const sai = (i - 1) % 2 === 1 ? ho[i - 1] : ho[i];          // par na saída: fica a mais tarde; na entrada: fica a mais cedo
+        add(CAT.VOCE, cod, dia, 'Batida duplicada (home office)', `Bateu ${fmt(ho[i - 1])} e ${fmt(ho[i])} no app. Fora do AFDT: ${fmt(sai)} (fica o maior trabalhado).`, { naoInserir: [sai] });
+        break;
+      }
+    }
+
     // 1) respostas do gestor
     for (const r of validacao) {
       const e = espelho[r.cod]; if (!e || ign.has(r.cod) || tratado.has(r.cod + "|" + r.dia)) continue;
@@ -277,7 +312,7 @@
       if (r.tipo === 'FOLGA') {
         if (temTurno) add(CAT.INFO, r.cod, r.dia, 'Folga informada, mas há turno batido', 'Gestor errou — vale a batida. Não lançar folga.', { gestor: g });
         else if (d.bat.length === 1) add(CAT.GESTOR, r.cod, r.dia, 'Folga informada com 1 batida original', 'Batida original sem saída. Foi folga (desconsiderar a batida) ou trabalhou (qual a saída)? Motorista: conferir tráfego.', { gestor: g });
-        else if (/FOLGA/.test(d.det)) continue;
+        else if (/FOLGA/.test(d.det) || AFAST.test(d.det)) continue;
         else add(CAT.IMPORTAR, r.cod, r.dia, 'Folga', 'Escala do mês: F', { gestor: g, escala: { tipo: 'F' } });
         marca(r.cod, r.dia);
       } else if (r.tipo === 'FALTA') {
@@ -287,6 +322,10 @@
         if (/LICEN|AFAST/.test(d.det)) { if (temTurno) add(CAT.VOCE, r.cod, r.dia, 'Atestado com turno batido', 'Conferir se o atestado foi após o expediente.', { gestor: g }); }
         else add(CAT.VOCE, r.cod, r.dia, 'Atestado não cadastrado', 'Cadastrar no Fortes Pessoal (conferir e-mail).', { gestor: g });
         marca(r.cod, r.dia);
+      } else if (r.tipo === 'CURSO') {
+        if (!d.bat.length && /FALTA \[FOLHA\]|^FALTA$/.test(d.det)) add(CAT.VOCE, r.cod, r.dia, 'Aprendiz em curso', 'Lançar a justificativa no Fortes (falta abonada — aula de aprendizagem).', { gestor: g });
+        else if (temTurno) add(CAT.INFO, r.cod, r.dia, 'Curso informado, mas há turno batido', 'Gestor errou — vale a batida.', { gestor: g });
+        marca(r.cod, r.dia);
       }
     }
 
@@ -295,7 +334,45 @@
       const e = espelho[r.cod]; if (!e || ign.has(r.cod)) continue;
       const d = e.dias[r.dia] || { bat: [], det: '' };
       const h = hm(r.hora); const g = txtResp(r.cod, r.dia);
-      if (/LICEN|F[ÉE]RIAS|AFAST/.test(d.det)) { add(CAT.VOCE, r.cod, r.dia, 'Batida informada em dia de afastamento', `Não inserir ${r.hora} (o dia é ${d.det.toLowerCase()}).`, { gestor: g, naoInserir: [h] }); marca(r.cod, r.dia); continue; }
+      if (AFAST.test(d.det)) {
+        // já apontado no 0b quando a batida está no AFDT; aqui só o lançamento que não está no AFDT
+        if (!noAfdt.has(r.cod + '|' + r.dia + '|' + r.hora)) add(CAT.VOCE, r.cod, r.dia, 'Batida informada em dia de afastamento', `Não inserir ${r.hora} (o dia é ${d.det.toLowerCase()}).`, { gestor: g, naoInserir: [h] });
+        marca(r.cod, r.dia); continue;
+      }
+      const psDia = (e.prevSem[d.sem] || []).map(hm);
+      const lancsDia = (resp[r.cod + '|' + r.dia] || []).filter(x => x.hora && /^LANC/.test(x.tipo));
+      // Saída depois da meia-noite de um turno que começou à tarde: o gestor informa a batida com a data do dia seguinte
+      // (caso REC 02/10/2026 00:00 → turno de 01/10). Precisa de escala com Limite para o Fortes puxar a batida.
+      if (h < 300 && !noturnoAnterior(e, r.dia, h) && !tratado.has(r.cod + '|' + (r.dia - 1))) {
+        const da = e.dias[r.dia - 1];
+        const psA = da ? (e.prevSem[da.sem] || []).map(hm) : [], preA = new Set(psA.slice(1, -1));
+        const reaisA = da ? da.bat.filter(x => !preA.has(x)) : [];
+        if (psA.length >= 2 && psA[0] < 1080 && reaisA.length % 2 === 1 && reaisA[reaisA.length - 1] >= 720 && !AFAST.test(da.det) && !/FERIADO/.test(da.det)) {
+          const limite = Math.ceil((h + 30) / 60) * 60;
+          add(CAT.IMPORTAR, r.cod, r.dia - 1, 'Saída depois da meia-noite', `${r.hora} (informada com data ${dd(r.dia)}) é a saída do turno de ${dd(r.dia - 1)}. Escala do mês no dia ${dd(r.dia - 1)}: ${psA.map(fmt).join(' / ')} com Limite ${fmt(limite)}, para o Fortes puxar a batida para o turno.`, { gestor: txtResp(r.cod, r.dia - 1) || g, escala: { tipo: 'X', bat: psA, limite } });
+          marca(r.cod, r.dia - 1); continue;
+        }
+      }
+      // Batida do gestor SOBRANDO: o relógio já fechou o dia, ou há mais respostas do que casas vazias no espelho.
+      // A batida original prevalece: não entra no AFDT (caso/caso REC 01 e 02/10/2026).
+      if (d.bat.length >= 2 && h >= 300 && !noturnoAnterior(e, r.dia, h) && !d.bat.some(b => Math.abs(b - h) <= 15) && !/FERIADO/.test(d.det)) {
+        const fechado = d.bat.length % 2 === 0 && !d.vazios.length && !/AUS/.test(d.det);
+        let sobra = fechado;
+        if (!fechado && d.vazios.length && lancsDia.length > d.vazios.length && !lancsDia.some(x => hm(x.hora) < 300)) {
+          // cada casa vazia fica com a resposta mais próxima do horário previsto dela; o que sobrar não entra
+          const usados = new Set();
+          for (const s of d.vazios) {
+            const alvo = psDia[SLOTS.indexOf(s)]; if (alvo === undefined) continue;
+            const livre = lancsDia.filter(x => !usados.has(x)).sort((x, y) => Math.abs(hm(x.hora) - alvo) - Math.abs(hm(y.hora) - alvo))[0];
+            if (livre) usados.add(livre);
+          }
+          sobra = usados.size === d.vazios.length && !usados.has(r);
+        }
+        if (sobra) {
+          add(CAT.VOCE, r.cod, r.dia, 'Batida do gestor sobrando', `Não importar ${r.hora} (informada pelo gestor): ${fechado ? 'o relógio já fechou o dia' : 'as casas vazias do dia já foram preenchidas por outra resposta'} — a batida original prevalece.`, { gestor: g, naoInserir: [h] });
+          continue;
+        }
+      }
       const naEsp = d.bat.some(b => Math.abs(b - h) <= 5);
       const naoAfdt = r.status === 'Confirmado' && !noAfdt.has(r.cod + '|' + r.dia + '|' + r.hora) && !naEsp;
       if (naoAfdt && !tratado.has(r.cod + '|' + r.dia)) add(CAT.IMPORTAR, r.cod, r.dia, 'Batida informada fora do AFDT', `Incluir ${r.hora} no AFDT.`, { gestor: g, afdt: r.hora });
@@ -342,9 +419,14 @@
       if (/feriado/.test(o)) continue;
       const confirma = [['f[ée]rias', 'F[ÉE]RIAS'], ['folga', 'FOLGA'], ['licen|atestad', 'LICEN|ATEST|AFAST'], ['feriado', 'FERIADO']].some(([t, dz]) => new RegExp(t).test(o) && new RegExp(dz).test(d.det));
       if (confirma) { marca(r.cod, r.dia); continue; }   // texto do gestor só confirma o que o espelho já mostra
+      // dia sem batida que o Fortes já mostra justificado (falta abonada, folga, acompanhamento…): nada a fazer
+      if (!d.bat.length && d.det && !/FALTA \[FOLHA\]|^FALTA$|AUS[ÊE]NCIA/.test(d.det)) {
+        add(CAT.INFO, r.cod, r.dia, 'Resposta só confirma o Fortes', `O Fortes já mostra "${d.det}". Nada a fazer.`, { gestor: g });
+        marca(r.cod, r.dia); continue;
+      }
       if (fechado && !/noite|noturn|hospital|doente|n[ãa]o trabalhou/.test(o)) { marca(r.cod, r.dia); continue; }  // texto só confirma o horário
       let acao = 'Ler a observação e decidir.', extra = { gestor: g };
-      if (/curso/.test(o) || (!d.bat.length && /aprendiz/.test(o))) acao = 'Aprendiz: confirmar com o gestor se foi curso e justificar a falta.';
+      if (/curso/.test(o) || (!d.bat.length && /aprendiz/.test(o))) acao = 'Aprendiz em curso: lançar a justificativa no Fortes (falta abonada — aula de aprendizagem).';
       else if (/noite|noturn/.test(o)) acao = 'Mudou de turno: se for o mês todo, trocar a jornada (Fortes Pessoal); se poucos dias, escala.';
       else if (/tr[áa]fego|viagem|carreteiro/.test(o)) acao = 'Motorista de viagem: conferir horário na planilha do tráfego.';
       else if (/hospital|doente|n[ãa]o trabalhou/.test(o)) acao = 'Sem atestado = falta. Conferir e-mail de atestados.';
@@ -367,7 +449,7 @@
       for (const [k, d] of Object.entries(e.dias)) {
         const dia = +k, b = d.bat, g = txtResp(cod, dia), fer = /FERIADO/.test(d.det);
         if (/F[ÉE]RIAS/.test(d.det) && b.length && !tratado.has(cod + '|' + dia)) {
-          add(CAT.VOCE, cod, dia, 'Batida em dia de férias', `Batida(s) ${b.map(fmt).join(', ')} em dia de férias. Conferir: desconsiderar a batida ou corrigir o período de férias.`, { gestor: g });
+          add(CAT.VOCE, cod, dia, 'Batida em dia de férias', `Desconsiderar ${b.map(fmt).join(', ')}: batida em dia de férias é excluída do ponto.`, { gestor: g, desc: b.slice() });
           marca(cod, dia); continue;
         }
         if (tratado.has(cod + '|' + dia)) continue;
@@ -379,21 +461,34 @@
         const aMais = arr => {
           const alvo = psJ.length >= 4 ? [psJ[1], psJ[2]] : null;
           const dist = (x, y) => Math.min(Math.abs(x - y), 1440 - Math.abs(x - y));
-          let melhor = null, mt = -1, md = Infinity;
+          let melhor = null, mt = -1, md = Infinity; const cands = [];
           for (let i = 0; i < arr.length; i++) {
             const r = arr.filter((_, j) => j !== i), t = trabDe(r);
             const dv = alvo && r.length >= 4 ? dist(r[1], alvo[0]) + dist(r[2], alvo[1]) : 0;
+            cands.push({ sai: arr[i], t, dv });
             if (dv < md - 5 || (Math.abs(dv - md) <= 5 && t > mt)) { md = dv; mt = t; melhor = arr[i]; }
           }
-          return { sai: melhor, trab: mt };
+          // "Menor prejuízo" = maior trabalhado — mas se isso cria 2h ou mais de extra e existe opção que fecha o dia perto do
+          // previsto, a batida estranha é a outra (caso REC 02/10/2026: 07:35 12:06 14:13 17:43 22:00 → sai 22:00, não 17:43).
+          const prevD = hm(d.prev) || 0; let aviso = '';
+          if (prevD) {
+            const alt = cands.filter(c => Math.abs(c.dv - md) <= 5 && Math.abs(c.t - prevD) <= 60).sort((x, y) => y.t - x.t)[0];
+            if (alt && mt - alt.t >= 120) { aviso = ` Mantê-la deixaria o dia com ${dur(mt)} trabalhadas (${dur(mt - prevD)} de extra); sem ela o dia fecha em ${dur(alt.t)}.`; melhor = alt.sai; mt = alt.t; }
+          }
+          return { sai: melhor, trab: mt, aviso };
         };
+        const preJ0 = new Set(psJ.slice(1, -1)), ehPre = x => preJ0.has(x) && !lancDia.has(x);
         for (let i = 1; i < b.length; i++) {
           const dif = (b[i] - b[i - 1] + 1440) % 1440;
-          if (dif <= 15) {
+          // Pré-assinalada colada na ENTRADA ou na SAÍDA real do dia não é duplicada (José caso 03/10 e caso 13/10/2026:
+          // a saída real veio logo depois da volta pré-assinalada). Já uma batida real no MEIO do dia colada na pré-assinalada
+          // é intervalo de poucos minutos (bateu só a ida ou só a volta): sai a real, para valer o intervalo pré-assinalado (casos FOR set/2026).
+          const umaPre = ehPre(b[i]) !== ehPre(b[i - 1]), iReal = ehPre(b[i]) ? i - 1 : i;
+          if (dif <= 15 && !(ehPre(b[i]) && ehPre(b[i - 1])) && !(umaPre && (iReal === 0 || iReal === b.length - 1))) {
             // candidatas: uma das duas batidas coladas (se uma veio do gestor, é ela). Se o dia ficar ímpar, sai mais uma.
-            // Antes a escolha era pela posição (par/ímpar), o que podia deixar o dia com batida faltando (caso de 19/09: 07:09 12:02 12:18 12:20).
+            // Antes a escolha era pela posição (par/ímpar), o que podia deixar o dia com batida faltando (caso 19/09: 07:09 12:02 12:18 12:20).
             let cands = [i, i - 1];
-            if (lancDia.has(b[i])) cands = [i]; else if (lancDia.has(b[i - 1])) cands = [i - 1];
+            if (lancDia.has(b[i])) cands = [i]; else if (lancDia.has(b[i - 1])) cands = [i - 1]; else if (umaPre) cands = [iReal];
             let best = null;
             for (const c of cands) {
               const resto = b.filter((_, j) => j !== c); let descs = [b[c]], t, impar = false;
@@ -425,7 +520,7 @@
         const diaInteiro = !b.length && /FALTA \[FOLHA\]/.test(d.det);
         const ant = (e.dias[dia - 1] || {}).bat || [];
         if (b.length === 1 && b[0] < 720 && ant[0] !== undefined && ant[0] >= 1080 && !d.vazios.length) {   // só se o turno anterior COMEÇOU à noite
-          // batida isolada de manhã depois do turno da noite = saída REAL tardia (caso 05/09/2026)
+          // batida isolada de manhã depois do turno da noite = saída REAL tardia (caso caso 05/09/2026)
           const da = e.dias[dia - 1] || {}, pa = cargaDoDia(e, da.sem || '');
           const doGestor = (resp[cod + '|' + dia] || []).concat(resp[cod + '|' + (dia - 1)] || []).filter(x => x.hora && hm(x.hora) < b[0] && hm(x.hora) < 720).map(x => x.hora);
           if (pa.ps.length >= 2) {
@@ -434,14 +529,23 @@
           } else add(CAT.VOCE, cod, dia, 'Batida isolada após turno noturno', `Conferir se ${fmt(b[0])} é a saída real do turno de ${dd(dia - 1)}.`, { gestor: g });
           marca(cod, dia); continue;
         }
+        // Turno da noite em dia sem jornada (sábado): linha começando depois da meia-noite com número ímpar de batidas
+        // é ENTRADA faltando, não batida a mais (caso REC 03/10/2026: 00:05 01:58 08:08).
+        const noturnoEmp = Object.values(e.prevSem).some(v => v.length && hm(v[0]) >= 1080);
+        if (b.length % 2 === 1 && b.length >= 3 && !d.vazios.length && b[0] < 360 && noturnoEmp && !psJ.length) {
+          add(CAT.GESTOR, cod, dia, 'Entrada faltando (turno da noite)', `As batidas ${b.map(fmt).join(', ')} são da madrugada/manhã seguinte: turno iniciado no dia ${dd(dia)} à noite, sem a batida de entrada. Qual foi o horário de entrada?`, { gestor: g });
+          marca(cod, dia); continue;
+        }
+        // (Dia de 2 batidas reais com o intervalo pré-assinalado no meio — ex.: sábado à noite 21:04 … 02:28 — fica como está:
+        //  em set/2026 o Breno manteve esses dias sem escala; o intervalo pré-assinalado vale.)
         if (b.length % 2 === 1 && !d.vazios.length && b.length >= 3) {
           // fica a combinação cujo intervalo (S1/E2) mais se parece com o intervalo da jornada; empate → maior trabalhado
-          const melhor = aMais(b).sai;
-          add(CAT.VOCE, cod, dia, 'Batida a mais', `Desconsiderar ${fmt(melhor)} (a que dá menos prejuízo ao empregado; ver origem).`, { gestor: g, desc: [melhor] });
+          const am = aMais(b), melhor = am.sai;
+          add(CAT.VOCE, cod, dia, 'Batida a mais', am.aviso ? `Desconsiderar ${fmt(melhor)}.${am.aviso} Conferir a origem.` : `Desconsiderar ${fmt(melhor)} (a que dá menos prejuízo ao empregado; ver origem).`, { gestor: g, desc: [melhor] });
           marca(cod, dia); continue;
         }
         // Dia com 4 batidas e sem ausência, mas o Fortes apurou HE e atraso juntos: um par muito curto (até 1h30) longe do
-        // intervalo da jornada é batida a mais (caso de 09/09: 06:52 07:17 14:00 19:16 · caso de 11/09: 05:45 06:39 12:20 17:01).
+        // intervalo da jornada é batida a mais (caso 09/09: 06:52 07:17 14:00 19:16 · caso 11/09: 05:45 06:39 12:20 17:01).
         // Sai a batida do meio do par curto — mantém a entrada/saída e o maior trabalhado; o Fortes volta a pré-assinalar o intervalo.
         if (b.length === 4 && !d.vazios.length && psJ.length >= 4 && psJ[0] < psJ[3] && (hm(d.hExtra) || 0) > 0 && (hm(d.atSa) || 0) > 0 && b[0] < b[1] && b[1] < b[2] && b[2] < b[3]) {
           let sai = null;
@@ -472,7 +576,9 @@
       if ((resp[k] || []).some(r => r.tipo === 'FALTA')) continue;     // falta confirmada
       add(g ? CAT.VOCE : CAT.GESTOR, cod, +dia, 'Batida inexistente (Fortes)', `Previstas sem batida: ${hs.join(', ')}.`, { gestor: g });
     }
-    return itens.sort((a, b) => a.cat.localeCompare(b.cat) || a.cod.localeCompare(b.cod) || a.dia - b.dia);
+    itens.sort((a, b) => a.cat.localeCompare(b.cat) || a.cod.localeCompare(b.cod) || a.dia - b.dia);
+    itens.reconstruidos = reconstruidos;
+    return itens;
   }
 
   // ───────────────────────── geração de arquivos ─────────────────────────
