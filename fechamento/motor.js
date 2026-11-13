@@ -27,7 +27,9 @@
   const semCodigo = c => String(c || '').replace(/^GBLOG_/, '');
 
   // Regra de intervalo do Breno: até 6h nenhum; >6h 30 min; >8h 1h.
-  const intervalo = carga => carga > 480 ? 60 : carga > 360 ? 30 : 0;
+  // Tolerância de 10 min SÓ no limite das 6h (Breno, 13/11/2026): até 6h10 não precisa de intervalo. Acima de 8h continua 1h.
+  const TOL_6H = 370;
+  const intervalo = carga => carga > 480 ? 60 : carga > TOL_6H ? 30 : 0;
 
   // ───────────────────────── leitura do espelho (pdf) ─────────────────────────
   // pages = [[{str,x,y,w}]] (coordenadas do pdf.js: y cresce para cima)
@@ -403,8 +405,18 @@
         if (hr === Math.max(...lanc.map(rel)) && hr > rel(ini) && fimPrev - hr > 60 && soPre && real.length) {
           const bat = [ini, ini + pa.c];
           const limite = (ini + pa.c) % 1440 < ini ? Math.ceil(((ini + pa.c) % 1440 + 40) / 60) * 60 : null;
-          const descs = (da.bat || []).filter(t => rel(t) > rel((da.bat || [])[0]) && rel(t) !== hr);
-          add(CAT.IMPORTAR, r.cod, alvo, 'Saída antecipada informada', `Escala do mês: ${bat.map(fmt).join(' / ')} (carga ${dur(pa.c)} em 2 batidas${limite !== null ? ', Limite ' + fmt(limite) : ''}). Com escala de 2 batidas, ficam só a entrada e a saída ${r.hora}: desconsiderar ${[...(da.bat || []).filter(t => rel(t) > rel((da.bat || [])[0]) && rel(t) !== hr)].map(fmt).join(', ')}.`, { gestor: g, escala: { tipo: 'X', bat, limite }, desc: descs, limpaPre: true });
+          // Batida ORIGINAL prevalece (Breno, 13/11/2026): se o relógio já tem uma batida até 1h30 antes da saída informada,
+          // a saída é a do relógio e a do gestor não entra (sábado 10/10/2026 à noite: relógio 23:58/00:03, gestor 00:20/01:00).
+          const orig = (da.bat || []).filter(t => !preAss.has(rel(t)) && rel(t) < hr && hr - rel(t) <= 90 && rel(t) > rel(ini) + 60).pop();
+          const txtEsc = `Escala do mês: ${bat.map(fmt).join(' / ')} (carga ${dur(pa.c)} em 2 batidas${limite !== null ? ', Limite ' + fmt(limite) : ''})`;
+          if (orig !== undefined) {
+            const pres = (da.bat || []).filter(t => preAss.has(rel(t)));
+            add(CAT.IMPORTAR, r.cod, alvo, 'Saída antecipada informada', `${txtEsc}. A saída é a batida do relógio ${fmt(orig)}; a informada pelo gestor (${r.hora}) NÃO entra no AFDT — a batida original prevalece.${pres.length ? ' Desconsiderar a(s) pré-assinalada(s) ' + pres.map(fmt).join(', ') + '.' : ''}`,
+              { gestor: g, escala: { tipo: 'X', bat, limite }, desc: pres, limpaPre: true, naoInserirDia: [[r.dia, [h]], [alvo, [h]]] });
+          } else {
+            const descs = (da.bat || []).filter(t => rel(t) > rel((da.bat || [])[0]) && rel(t) !== hr);
+            add(CAT.IMPORTAR, r.cod, alvo, 'Saída antecipada informada', `${txtEsc}. Com escala de 2 batidas, ficam só a entrada e a saída ${r.hora}: desconsiderar ${descs.map(fmt).join(', ')}.`, { gestor: g, escala: { tipo: 'X', bat, limite }, desc: descs, limpaPre: true });
+          }
           marca(r.cod, alvo);
         }
       }
@@ -603,6 +615,6 @@
     }).join(String.fromCharCode(13, 10)) + String.fromCharCode(13, 10);
   }
 
-  const api = { lerEspelho, lerBatidaInexistente, lerValidacao, lerAFDT, filtrarMes, pis11, analisar, arquivoEscala, CAT, hm, fmt, dur, intervalo };
+  const api = { TOL_6H, lerEspelho, lerBatidaInexistente, lerValidacao, lerAFDT, filtrarMes, pis11, analisar, arquivoEscala, CAT, hm, fmt, dur, intervalo };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Motor = api;
 })(typeof window !== 'undefined' ? window : globalThis);

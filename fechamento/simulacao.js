@@ -177,9 +177,20 @@
       const ini = d.bats[0].r, fim = d.bats[d.bats.length - 1].r, iniRelogio = d.bats[0].t;
       const base = { cat: CAT.IMPORTAR, cod: e.codigo, nome: e.nome, dia: d.num, sem: d.sem, espelho: d.antes, det: d.det, gestor: '', origemAfdt: 'intervalo (regra TI)' };
       if ((d.sem === 'SAB' || d.sem === 'DOM') && d.bats.length === 2) {
-        const itv = d.trab > 480 ? 60 : d.trab > 360 ? 30 : 0; if (!itv) continue;
+        const itv = d.trab > 480 ? 60 : d.trab > (M.TOL_6H || 370) ? 30 : 0; if (!itv) continue;       // até 6h10 não precisa de intervalo
         let s = 720; if (s <= ini || s + itv >= fim) s = Math.floor((ini + fim - itv) / 2);
-        itens.push({ ...base, tipo: 'Intervalo de sábado/domingo', acao: `Trabalhou ${dur(d.trab)} sem intervalo: AFDT ${fmt(s)} e ${fmt(s + itv)} (regra da TI: >6h 30 min, >8h 1h).`, afdt: [fmt(s), fmt(s + itv)] });
+        const it = { ...base, tipo: 'Intervalo de sábado/domingo', acao: `Trabalhou ${dur(d.trab)} sem intervalo: AFDT ${fmt(s)} e ${fmt(s + itv)} (regra da TI: >6h10 30 min, >8h 1h).`, afdt: [fmt(s), fmt(s + itv)] };
+        // O Fortes espera as 2 batidas da jornada do sábado; com 4, ele reencaixa e calcula errado sempre que o 1º bloco
+        // (entrada → saída para o intervalo) é menor que o previsto — entrada depois do horário ou intervalo fora das 12:00.
+        // Solução (Breno, 13/11/2026): escala de 4 batidas com o MESMO total previsto: E1, S1, E2 reais e S2 = E2 + (Prev − 1º bloco).
+        // (out/2026: 5 de 41 sábados errados, todos com 1º bloco < previsto; nos outros 36 o cálculo saiu certo sem escala.)
+        const bloco1 = s - ini;
+        if (d.prev > 0 && bloco1 < d.prev) {
+          const bat = [ini, s, s + itv, s + itv + (d.prev - bloco1)];
+          it.escala = { tipo: 'X', bat };
+          it.acao += ` Escala do mês neste dia: ${bat.map(fmt).join(' / ')} (4 batidas, mesmo previsto de ${dur(d.prev)}) — sem ela o Fortes calcula errado. Marcar S1/E2 como intervalo.`;
+        }
+        itens.push(it);
       } else if (d.sem !== 'SAB' && d.sem !== 'DOM' && !semJanta.has(e.codigo + '|' + d.num) && iniRelogio >= 240 && iniRelogio <= 720 && fim - ini + iniRelogio > 1320
         // se a pessoa já parou por volta das 19h (19:00 ou 19:30 fora de um período trabalhado), a janta já existe:
         // inserir 19:00/19:30 ali quebrava os pares do dia

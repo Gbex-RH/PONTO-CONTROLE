@@ -81,14 +81,16 @@
         if (sai === null) { itens.push(item(e, dd, CAT.VOCE, 'Intervalo de viagem sem saída definida', `${txt}. Falta a saída do dia para posicionar o intervalo.`)); continue; }
         const jorn = sai - ent, prev = M.hm(dd.prev) || 0;
         const aviso = gest.length && Math.min(...gest) - iniMin(x) > 60 && vaz.includes('E.1') ? ` Atenção: o gestor informou entrada ${fmt(Math.min(...gest))}, mas a viagem começou ${fmt(iniMin(x))}.` : '';
-        // intervalo que deixa o dia com menos horas que o previsto vira ATRASO para o motorista: não lançar sozinho
-        if (prev && jorn - total < prev - 10) {
-          itens.push(item(e, dd, CAT.VOCE, 'Intervalo de viagem muito longo', `${txt}. Entrada ${fmt(ent)}, saída ${fmt(sai)}: com o intervalo inteiro o trabalhado cai para ${dur(Math.max(0, jorn - total))} (previsto ${dur(prev)}) e vira atraso. Decidir quanto lançar — não entrou no AFDT.${aviso}`, { trafego: true }));
+        // O intervalo de viagem entra INTEIRO, mesmo que o dia fique abaixo do previsto: é o correto para motorista de viagem
+        // (a planilha do tráfego sustenta; o tempo de espera é pago à parte no Movimento 3). Só não cabe se for maior que a jornada do dia.
+        if (jorn - total <= 0) {
+          itens.push(item(e, dd, CAT.VOCE, 'Intervalo de viagem maior que o dia', `${txt}. Entrada ${fmt(ent)}, saída ${fmt(sai)} (${dur(jorn)}): o intervalo não cabe no dia. Conferir com o tráfego.${aviso}`, { trafego: true }));
           continue;
         }
+        const abaixo = prev && jorn - total < prev - 10 ? ` O dia fica com ${dur(jorn - total)} trabalhadas (previsto ${dur(prev)}).` : '';
         let s = 720, r = 720 + total;
         if (s <= ent || r >= sai) { s = ent + Math.floor((jorn - total) / 2); r = s + total; }
-        itens.push(item(e, dd, CAT.IMPORTAR, 'Intervalo de viagem (tráfego)', `${txt}. AFDT: ${fmt(s)} e ${fmt(r)}. Marcar como intervalo.${aviso}`, { afdt: [fmt(s), fmt(r)], trafego: true }));
+        itens.push(item(e, dd, CAT.IMPORTAR, 'Intervalo de viagem (tráfego)', `${txt}. AFDT: ${fmt(s)} e ${fmt(r)}. Marcar como intervalo.${abaixo}${aviso}`, { afdt: [fmt(s), fmt(r)], trafego: true }));
       }
     }
     // batida faltando: sem resposta do gestor, vale a planilha (regra do Breno: batida original > gestor > planilha)
