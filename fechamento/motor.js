@@ -188,6 +188,14 @@
       return h < 720 && comecouNoite && !hoje.some(b => b >= 720 && b < 1080);
     };
     const AFAST = /F[ÉE]RIAS|LICEN|AFAST/;
+    // Desligamento informado pelo gestor no app: do dia informado em diante os dias não são pendência (falta a rescisão no Fortes)
+    const desl = {};
+    for (const r of validacao) if (r.tipo === 'DESLIGAMENTO') desl[r.cod] = Math.min(desl[r.cod] || 99, r.dia);
+    for (const [cod, dia] of Object.entries(desl)) {
+      if (!espelho[cod] || ign.has(cod)) continue;
+      add(CAT.VOCE, cod, dia, 'Desligamento informado pelo gestor', `Desligado em ${dd(dia)}. Cadastrar a rescisão no Fortes; os dias a partir daí não são pendência.`, { gestor: txtResp(cod, dia) });
+      for (const k of Object.keys(espelho[cod].dias)) if (+k >= dia) marca(cod, +k);
+    }
     const cargaDoDia = (e, sem) => {
       const ps = (e.prevSem[sem] || []).map(hm);
       let c = 0; for (let i = 0; i + 1 < ps.length; i += 2) c += (ps[i + 1] - ps[i] + 1440) % 1440;
@@ -349,7 +357,7 @@
         const da = e.dias[r.dia - 1];
         const psA = da ? (e.prevSem[da.sem] || []).map(hm) : [], preA = new Set(psA.slice(1, -1));
         const reaisA = da ? da.bat.filter(x => !preA.has(x)) : [];
-        if (psA.length >= 2 && psA[0] < 1080 && reaisA.length % 2 === 1 && reaisA[reaisA.length - 1] >= 720 && !AFAST.test(da.det) && !/FERIADO/.test(da.det)) {
+        if (psA.length >= 2 && psA[0] < 1080 && reaisA.length % 2 === 1 && (reaisA[reaisA.length - 1] >= 720 || psA[psA.length - 1] >= 1200) && !AFAST.test(da.det) && !/FERIADO/.test(da.det)) {
           const limite = Math.ceil((h + 30) / 60) * 60;
           add(CAT.IMPORTAR, r.cod, r.dia - 1, 'Saída depois da meia-noite', `${r.hora} (informada com data ${dd(r.dia)}) é a saída do turno de ${dd(r.dia - 1)}. Escala do mês no dia ${dd(r.dia - 1)}: ${psA.map(fmt).join(' / ')} com Limite ${fmt(limite)}, para o Fortes puxar a batida para o turno.`, { gestor: txtResp(r.cod, r.dia - 1) || g, escala: { tipo: 'X', bat: psA, limite } });
           marca(r.cod, r.dia - 1); continue;
@@ -358,7 +366,9 @@
       // Batida do gestor SOBRANDO: o relógio já fechou o dia, ou há mais respostas do que casas vazias no espelho.
       // A batida original prevalece: não entra no AFDT (caso/caso REC 01 e 02/10/2026).
       if (d.bat.length >= 2 && h >= 300 && !noturnoAnterior(e, r.dia, h) && !d.bat.some(b => Math.abs(b - h) <= 15) && !/FERIADO/.test(d.det)) {
-        const fechado = d.bat.length % 2 === 0 && !d.vazios.length && !/AUS/.test(d.det);
+        // (GBLOG REC 02/10/2026: espelho "14:00 20:05" com 14:00 pré-assinalada — a entrada 13:00 do gestor era descartada)
+        const reaisG = d.bat.filter(x => !psDia.slice(1, -1).includes(x));
+        const fechado = reaisG.length >= 2 && reaisG.length % 2 === 0 && !d.vazios.length && !/AUS/.test(d.det);
         let sobra = fechado;
         if (!fechado && d.vazios.length && lancsDia.length > d.vazios.length && !lancsDia.some(x => hm(x.hora) < 300)) {
           // cada casa vazia fica com a resposta mais próxima do horário previsto dela; o que sobrar não entra
@@ -395,6 +405,18 @@
       const alvo = noturnoAnterior(e, r.dia, h, lanc.filter(x => x >= 1080)) ? r.dia - 1 : r.dia;
       const da = e.dias[alvo] || { bat: [], sem: d.sem };
       const pa = cargaDoDia(e, da.sem);
+      // Saída REAL ocupando a casa da volta do intervalo: o empregado saiu até 1h depois da volta prevista e o Fortes pôs a batida
+      // em E.2, deixando S.2 vazia (GBLOG REC out/2026: "21:30 00:00 02:17 -----", gestor 01:20 · "13:09 19:00 20:49 -----", gestor 20:40).
+      // Vale a batida do relógio; falta só a volta pré-assinalada, que entra pelo AFDT. A batida do gestor não entra.
+      if (pa.ps.length >= 4 && (da.vazios || []).length === 1 && (da.bat || []).length === 3 && !tratado.has(r.cod + '|' + alvo) && !/FERIADO|LICEN|F[ÉE]RIAS/.test(da.det || '')) {
+        const ini0 = pa.ps[0], rl = t => (t < ini0 - 360 ? t + 1440 : t);
+        const pre0 = new Set(pa.ps.slice(1, -1)), rs = da.bat.filter(t => !pre0.has(t)), X = rs[1], volta = pa.ps[2];
+        if (rs.length === 2 && da.bat[1] === pa.ps[1] && rl(X) > rl(volta) && rl(X) - rl(volta) <= 60 && rl(h) <= rl(X) + 15 && rl(h) > rl(pa.ps[1])) {
+          add(CAT.IMPORTAR, r.cod, alvo, 'Saída real na casa da volta do intervalo', `A saída é a batida do relógio ${fmt(X)} (o gestor informou ${r.hora}, que não entra — a batida original prevalece). Falta só a volta do intervalo: AFDT ${fmt(volta)}. O dia fica ${[da.bat[0], da.bat[1], volta, X].map(fmt).join(' ')}.`,
+            { gestor: g, afdt: [fmt(volta)], naoInserirDia: [[r.dia, [h]], [alvo, [h]]] });
+          marca(r.cod, alvo); continue;
+        }
+      }
       if (pa.ps.length >= 2 && !/FERIADO|LICEN|F[ÉE]RIAS/.test(da.det || '')) {
         const ini = pa.ps[0], rel = t => (t < ini - 360 ? t + 1440 : t);      // linha do tempo do turno
         const fimPrev = rel(pa.ps[pa.ps.length - 1]) < rel(ini) ? rel(pa.ps[pa.ps.length - 1]) + 1440 : rel(pa.ps[pa.ps.length - 1]);
@@ -402,7 +424,7 @@
         const real = (da.bat || []).map(rel).filter(t => t > hr + 5);
         const preAss = new Set(pa.ps.slice(1, -1).map(rel));
         const soPre = real.every(t => preAss.has(t));
-        if (hr === Math.max(...lanc.map(rel)) && hr > rel(ini) && fimPrev - hr > 60 && soPre && real.length) {
+        if (hr === Math.max(...lanc.map(rel)) && hr > rel(ini) && fimPrev - hr > 60 && soPre && (real.length || (preAss.has(hr) && (da.bat || []).some(t => rel(t) === hr) && (da.vazios || []).length > 0))) {
           const bat = [ini, ini + pa.c];
           const limite = (ini + pa.c) % 1440 < ini ? Math.ceil(((ini + pa.c) % 1440 + 40) / 60) * 60 : null;
           // Batida ORIGINAL prevalece (Breno, 13/11/2026): se o relógio já tem uma batida até 1h30 antes da saída informada,
@@ -441,6 +463,7 @@
       if (/curso/.test(o) || (!d.bat.length && /aprendiz/.test(o))) acao = 'Aprendiz em curso: lançar a justificativa no Fortes (falta abonada — aula de aprendizagem).';
       else if (/noite|noturn/.test(o)) acao = 'Mudou de turno: se for o mês todo, trocar a jornada (Fortes Pessoal); se poucos dias, escala.';
       else if (/tr[áa]fego|viagem|carreteiro/.test(o)) acao = 'Motorista de viagem: conferir horário na planilha do tráfego.';
+      else if (/suspens/.test(o)) acao = 'Suspensão: lançar a suspensão no Fortes neste dia' + (d.bat.length ? ' (há batida no dia: conferir).' : '.');
       else if (/hospital|doente|n[ãa]o trabalhou/.test(o)) acao = 'Sem atestado = falta. Conferir e-mail de atestados.';
       else if (/[úu]ltima batida|largada/.test(o)) {
         const { ps, c } = cargaDoDia(e, d.sem);
