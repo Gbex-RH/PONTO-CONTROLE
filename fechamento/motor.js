@@ -291,6 +291,40 @@
       }
     }
 
+    // 0a) dia inteiro trabalhado MAIS CEDO que a jornada (espelho da regra "entrou à tarde"): entrada e saída pelo menos 2h antes
+    // do previsto, dia fechado. O Fortes paga como extra tudo o que cai fora da janela da jornada — precisa de escala no dia
+    // (GBLOG REC 27/10/2026: jornada 13:00–22:00, trabalhou 08:00–12:00/14:00–18:00 → 4h de HE indevida).
+    for (const [cod, e] of Object.entries(espelho)) {
+      if (ign.has(cod)) continue;
+      const cedo = [];
+      for (const d of Object.values(e.dias)) {
+        if (tratado.has(cod + '|' + d.num) || /FERIADO/.test(d.det) || AFAST.test(d.det)) continue;
+        const ps = (e.prevSem[d.sem] || []).map(hm); if (ps.length < 2 || ps[0] >= ps[ps.length - 1]) continue;       // só jornada que não vira o dia
+        // só com 4 batidas reais/informadas (dia completo com intervalo próprio). Com 2 batidas o Fortes encaixa as pré-assinaladas
+        // e apura certo — em REC out/2026 o Breno deixou como está (entrou 05:42, saiu 14:57 numa jornada 08–18).
+        const reais = reaisDoDia(e, d); if (reais.length !== 4) continue;
+        const fimPrev = ps[ps.length - 1];
+        if (reais[0] <= ps[0] - 120 && reais[reais.length - 1] <= fimPrev - 120 && reais[0] >= 240) cedo.push({ d, reais });
+      }
+      if (!cedo.length) continue;
+      const trabalhados = Object.values(e.dias).filter(d => d.bat.length).length;
+      if (cedo.length >= Math.max(5, 0.7 * trabalhados)) {
+        add(CAT.VOCE, cod, cedo[0].d.num, 'Horário mais cedo o mês todo', `Trabalhou mais cedo que a jornada em ${cedo.length} dias (ex.: ${fmt(cedo[0].reais[0])}; a jornada começa ${fmt(hm((e.prevSem[cedo[0].d.sem] || [])[0]))}). Trocar a jornada no Fortes Pessoal e reprocessar.`, { trocaJornada: 'tarde' });
+        for (const x of cedo) marca(cod, x.d.num);
+        continue;
+      }
+      for (const { d, reais } of cedo) {
+        const { c } = cargaDoDia(e, d.sem); if (!c) continue;
+        // 4 batidas: E1, S1, E2 reais e S2 = E2 + (previsto − 1º bloco); 2 batidas: carga prevista a partir da entrada
+        let bat;
+        if (reais.length === 4 && reais[1] - reais[0] < c) bat = [reais[0], reais[1], reais[2], reais[2] + (c - (reais[1] - reais[0]))];
+        else bat = escalaDeslocada(e, d, reais[0]);
+        add(CAT.IMPORTAR, cod, d.num, 'Dia deslocado (trabalhou mais cedo)', `Trabalhou ${reais.map(fmt).join(' ')}, mas a jornada do dia é ${(e.prevSem[d.sem] || []).join(' / ')}. Escala do mês: ${bat.map(fmt).join(' / ')} (carga ${dur(c)}) — sem ela o Fortes paga como extra o que cai fora da jornada. Marcar S1/E2 como intervalo.`,
+          { gestor: txtResp(cod, d.num), escala: { tipo: 'X', bat }, limpaPre: true });
+        marca(cod, d.num);
+      }
+    }
+
     // 0b) batida do app (gestor ou home office) em dia de férias/licença/afastamento: é excluída do ponto
     const afdtDia = {};
     for (const a of afdt) { const c = p2c[pis11(a.pis)]; if (c && !ign.has(c)) (afdtDia[c + '|' + a.dia] = afdtDia[c + '|' + a.dia] || []).push(a); }
@@ -459,11 +493,12 @@
         marca(r.cod, r.dia); continue;
       }
       if (fechado && !/noite|noturn|hospital|doente|n[ãa]o trabalhou/.test(o)) { marca(r.cod, r.dia); continue; }  // texto só confirma o horário
+      // suspensão fica no ponto como FALTA (Breno, 16/11/2026): nada a fazer — só conferir se sobrou batida no dia
+      if (/suspens/.test(o)) { add(d.bat.length ? CAT.VOCE : CAT.INFO, r.cod, r.dia, 'Suspensão informada', d.bat.length ? 'Suspensão fica como falta, mas há batida no dia: desconsiderar a batida.' : 'Suspensão fica no ponto como falta. Nada a fazer.', { gestor: g }); marca(r.cod, r.dia); continue; }
       let acao = 'Ler a observação e decidir.', extra = { gestor: g };
       if (/curso/.test(o) || (!d.bat.length && /aprendiz/.test(o))) acao = 'Aprendiz em curso: lançar a justificativa no Fortes (falta abonada — aula de aprendizagem).';
       else if (/noite|noturn/.test(o)) acao = 'Mudou de turno: se for o mês todo, trocar a jornada (Fortes Pessoal); se poucos dias, escala.';
       else if (/tr[áa]fego|viagem|carreteiro/.test(o)) acao = 'Motorista de viagem: conferir horário na planilha do tráfego.';
-      else if (/suspens/.test(o)) acao = 'Suspensão: lançar a suspensão no Fortes neste dia' + (d.bat.length ? ' (há batida no dia: conferir).' : '.');
       else if (/hospital|doente|n[ãa]o trabalhou/.test(o)) acao = 'Sem atestado = falta. Conferir e-mail de atestados.';
       else if (/[úu]ltima batida|largada/.test(o)) {
         const { ps, c } = cargaDoDia(e, d.sem);
