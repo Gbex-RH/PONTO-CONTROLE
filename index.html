@@ -577,7 +577,7 @@
         <button class="empresa-btn gblog" id="btn-gblog" onclick="setEmpresa('GBLOG')">GBLOG</button>
       </div>
       <span class="topbar-user">Olá, <strong id="topbar-nome">—</strong></span>
-      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v96</span>
+      <span style="font-size:10px;color:var(--text-muted);opacity:.6;border:1px solid var(--border);border-radius:4px;padding:2px 6px;">v97</span>
       <button class="btn-ghost" onclick="trocarMinhaSenha()" title="Trocar minha senha">🔑</button>
       <button class="btn-ghost" onclick="doLogout()">Sair</button>
     </div>
@@ -4540,6 +4540,7 @@ async function gerarAFDTHomeOffice() {
   const mes = document.getElementById('val-mes').value;
   if (!mes) { showToast('Selecione o mês.', 'error'); return; }
   const incluirExportados = document.getElementById('afdt-incluir-exportados').checked;
+  const filtFilial = document.getElementById('val-filial').value; // v97: respeita a filial escolhida
 
   const pisMap = {};
   FUNCIONARIOS.forEach(f => { if (f.pis) pisMap[f.codigo] = f.pis; });
@@ -4551,6 +4552,11 @@ async function gerarAFDTHomeOffice() {
   const erros = [];
 
   for (const func of await hoListaComEx()) {
+    // v97: filial atual do cadastro (mesma regra da Validação), não a da lista de home office
+    if (filtFilial) {
+      const cad = buscarFunc(func.codigo, func.empresa || 'GBEX');
+      if (((cad && cad.filial) || func.filial || '') !== filtFilial) continue;
+    }
     // Ex-home office: só entra se tiver batida no mês (senão nem aparece no resumo)
     if (func.ex) {
       try {
