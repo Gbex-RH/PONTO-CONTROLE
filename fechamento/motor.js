@@ -184,8 +184,12 @@
       const ant = (e.dias[dia - 1] || {}).bat || [];
       const hoje = (e.dias[dia] || {}).bat || [];
       const dAnt = e.dias[dia - 1], psAnt = dAnt ? (e.prevSem[dAnt.sem] || []).map(hm) : [];
-      const comecouNoite = (ant[0] !== undefined && ant[0] >= 1080) || (psAnt[0] !== undefined && psAnt[0] >= 1080) || (!ant.length && extra.some(b => b >= 1080));
-      return h < 720 && comecouNoite && !hoje.some(b => b >= 720 && b < 1080);
+      // Madrugada (até 06:00) depois de jornada que começa à noite (a partir de 17:00, já que quem tem jornada 18:00 entra 17:4x):
+      // é a saída do turno de ontem, mesmo que HOJE já tenha a entrada das 17:4x (FOR out/2026: gestor informou 04:00 do turno do dia 22
+      // com data 23; a ferramenta jogava no dia 23 e cobrava de novo o gestor).
+      const cedo = h <= 360, lim = cedo ? 1020 : 1080;
+      const comecouNoite = (ant[0] !== undefined && ant[0] >= lim) || (psAnt[0] !== undefined && psAnt[0] >= lim) || (!ant.length && extra.some(b => b >= 1080));
+      return h < 720 && comecouNoite && (cedo || !hoje.some(b => b >= 720 && b < 1080));
     };
     const AFAST = /F[ÉE]RIAS|LICEN|AFAST/;
     // Desligamento informado pelo gestor no app: do dia informado em diante os dias não são pendência (falta a rescisão no Fortes)
@@ -255,6 +259,29 @@
         add(CAT.VOCE, cod, tardeTodos[0].num, 'Horário da tarde o mês todo', `Entrou à tarde em ${tardeTodos.length} de ${trabalhados.length} dias trabalhados (ex.: ${fmt(tardeTodos[0]._iniTarde)}), mas a jornada cadastrada começa ${fmt(hm((e.prevSem[tardeTodos[0].sem] || [])[0]))}. Trocar a jornada no Fortes Pessoal e reprocessar; depois processar de novo na ferramenta.`, { trocaJornada: 'tarde' });
         for (const d of tardeTodos) marca(cod, d.num);
         tarde.length = 0;
+      }
+      // Jornada cadastrada errada o mês todo, em QUALQUER turno (FOR out/2026: caso e caso entram ~15h numa jornada
+      // 18h–04h; caso tem jornada da tarde e trabalha à noite). A entrada real fica 2h ou mais longe da jornada em 70% dos dias:
+      // trocar a jornada no Fortes Pessoal — enquanto isso, as pendências que o Fortes gera são falsas.
+      {
+        const desv = []; let dias = 0;
+        for (const d of trabalhados) {
+          if (/FERIADO|LICEN|F[ÉE]RIAS|AFAST/.test(d.det)) continue;
+          const ps = (e.prevSem[d.sem] || []).map(hm); if (ps.length < 2 || ps[0] < 720) continue;   // só jornada que começa à tarde/noite (as diurnas têm regras próprias abaixo)
+          const pre = new Set(ps.slice(1, -1)), r0 = d.bat.filter(t => !pre.has(t))[0]; if (r0 === undefined) continue;
+          let dv = r0 - ps[0]; while (dv > 720) dv -= 1440; while (dv < -720) dv += 1440;
+          dias++; desv.push(dv);
+        }
+        const longe = desv.filter(x => Math.abs(x) >= 120).length;
+        const ord0 = desv.slice().sort((a, b) => a - b), med0 = ord0[Math.floor(ord0.length / 2)];
+        const juntos = desv.filter(x => Math.abs(x - med0) <= 90).length;   // desvio parecido todo dia (motorista de viagem varia muito: não conta)
+        if (dias >= 8 && longe >= 0.8 * dias && Math.abs(med0) >= 120 && juntos >= 0.7 * dias) {
+          const ord = ord0, med = med0;
+          const d0 = trabalhados.find(d => (e.prevSem[d.sem] || []).length >= 2);
+          add(CAT.VOCE, cod, d0 ? d0.num : 0, 'Jornada cadastrada diferente da real o mês todo', `A entrada real fica a ${dur(Math.abs(med))} ${med < 0 ? 'antes' : 'depois'} da jornada cadastrada em ${longe} de ${dias} dias (jornada começa ${fmt((e.prevSem[(d0 || {}).sem] || [])[0] === undefined ? 0 : hm(e.prevSem[d0.sem][0]))}). Trocar a jornada no Fortes Pessoal e reprocessar; as pendências do Fortes deste empregado são falsas até lá.`, { trocaJornada: 'tarde' });
+          for (const n of Object.keys(e.dias)) marca(cod, +n);
+          ign.add(cod); continue;
+        }
       }
       for (const d of [...noturnos, ...tarde]) {
         const g = txtResp(cod, d.num), noite = noturnos.includes(d);
@@ -341,7 +368,7 @@
       const [cod, ds] = k.split('|'), dia = +ds; if (tratado.has(k)) continue;
       const ho = [...new Set(as.filter(a => a.origem === 'HO').map(a => hm(a.hora)))].sort((x, y) => x - y);
       for (let i = 1; i < ho.length; i++) if (ho[i] - ho[i - 1] <= 15) {
-        const sai = (i - 1) % 2 === 1 ? ho[i - 1] : ho[i];          // par na saída: fica a mais tarde; na entrada: fica a mais cedo
+        const sai = (i === ho.length - 1 || (i - 1) % 2 === 1) ? ho[i - 1] : ho[i];   // fim do dia ou saída: fica a mais tarde; entrada: fica a mais cedo (FOR out/2026: 17:56 e 18:01 → fica 18:01)
         add(CAT.VOCE, cod, dia, 'Batida duplicada (home office)', `Bateu ${fmt(ho[i - 1])} e ${fmt(ho[i])} no app. Fora do AFDT: ${fmt(sai)} (fica o maior trabalhado).`, { naoInserir: [sai] });
         break;
       }
@@ -384,7 +411,8 @@
         marca(r.cod, r.dia); continue;
       }
       const psDia = (e.prevSem[d.sem] || []).map(hm);
-      const lancsDia = (resp[r.cod + '|' + r.dia] || []).filter(x => x.hora && /^LANC/.test(x.tipo));
+      // (resposta repetida — duas linhas iguais no Excel — conta uma vez só: FOR out/2026, caso 02/10, 18:10 duplicada)
+      const lancsDia = (resp[r.cod + '|' + r.dia] || []).filter(x => x.hora && /^LANC/.test(x.tipo)).filter((x, i, a) => a.findIndex(y => y.hora === x.hora) === i);
       // Saída depois da meia-noite de um turno que começou à tarde: o gestor informa a batida com a data do dia seguinte
       // (caso REC 02/10/2026 00:00 → turno de 01/10). Precisa de escala com Limite para o Fortes puxar a batida.
       if (h < 300 && !noturnoAnterior(e, r.dia, h) && !tratado.has(r.cod + '|' + (r.dia - 1))) {
@@ -608,6 +636,21 @@
         }
         // (Dia de 2 batidas reais com o intervalo pré-assinalado no meio — ex.: sábado à noite 21:04 … 02:28 — fica como está:
         //  em set/2026 o Breno manteve esses dias sem escala; o intervalo pré-assinalado vale.)
+        // 6 batidas ou mais num dia fechado, com jornada de 4: provável batida indevida (erro do relógio/app) — só sinaliza (FOR out/2026, caso 19 e 20/10)
+        if (b.length >= 6 && b.length % 2 === 0 && !d.vazios.length && psJ.length >= 2 && b.length > psJ.length && !fer && !/F[ÉE]RIAS|LICEN|AFAST/.test(d.det)) {
+          add(CAT.VOCE, cod, dia, 'Dia com batidas a mais que a jornada', `${b.length} batidas (${b.map(fmt).join(' ')}) para uma jornada de ${psJ.length}. Conferir se há batida indevida (erro do relógio/app) e desconsiderar. Nada foi alterado.`, { gestor: g });
+          marca(cod, dia); continue;
+        }
+        // Dia de jornada de 2 batidas (ou sem jornada, sábado) com 3 batidas e a do meio perto do meio-dia: ela é a SAÍDA para o intervalo
+        // (o empregado esqueceu de bater a volta). Não é "batida a mais": falta só a volta (FOR out/2026: 08:05 11:58 16:42 → entra só 13:00).
+        if (b.length === 3 && !d.vazios.length && psJ.length <= 2 && b[1] >= 660 && b[1] <= 810 && b[2] > b[1] && b[1] > b[0]) {
+          const tot = b[2] - b[0], itv = intervalo(tot);
+          if (itv) {
+            const e2 = Math.abs(b[1] - 720) <= 30 ? 720 + itv : b[1] + itv;
+            add(CAT.IMPORTAR, cod, dia, 'Volta do intervalo faltando (sábado)', `Bateu ${fmt(b[0])} ${fmt(b[1])} ${fmt(b[2])}: ${fmt(b[1])} é a saída para o intervalo e falta a volta. AFDT ${fmt(e2)} (intervalo de ${itv} min pela regra da TI).`, { gestor: g, afdt: [fmt(e2)] });
+            marca(cod, dia); continue;
+          }
+        }
         if (b.length % 2 === 1 && !d.vazios.length && b.length >= 3) {
           // fica a combinação cujo intervalo (S1/E2) mais se parece com o intervalo da jornada; empate → maior trabalhado
           const am = aMais(b), melhor = am.sai;

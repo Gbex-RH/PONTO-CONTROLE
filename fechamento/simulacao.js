@@ -78,8 +78,10 @@
         const ant = porData[dia - 1] || [], hoje = porData[dia] || [];
         // turno da noite = o turno do dia anterior COMEÇOU à noite (1ª batida da linha do Fortes, ou jornada noturna)
         const dAnt = e.dias[dia - 1], psAnt = dAnt ? (e.prevSem[dAnt.sem] || []).map(hm) : [];
-        const comecouNoite = (ant[0] && ant[0].t >= 1080) || (psAnt[0] !== undefined && psAnt[0] >= 1080);
-        if (!n.fixo && n.t < 720 && comecouNoite && !hoje.some(b => b.t >= 720 && b.t < 1080)) { dia = dia - 1; off = 1; }
+        // madrugada (até 06:00) após jornada que começa às 17:00 ou depois: saída do turno de ontem, mesmo com a entrada 17:4x de hoje
+        const cedo = n.t <= 360, lim = cedo ? 1020 : 1080;
+        const comecouNoite = (ant[0] && ant[0].t >= lim) || (psAnt[0] !== undefined && psAnt[0] >= lim);
+        if (!n.fixo && n.t < 720 && comecouNoite && (cedo || !hoje.some(b => b.t >= 720 && b.t < 1080))) { dia = dia - 1; off = 1; }
         if (naoInserir.has(chave(cod, dia) + '|' + n.t) || naoInserir.has(chave(cod, n.dia) + '|' + n.t)) continue;
         const lst = porData[dia] = porData[dia] || [];
         const igual = lst.find(b => Math.abs(b.t - n.t) <= 1);
